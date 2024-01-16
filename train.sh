@@ -1,0 +1,7 @@
+export OMPI_COMM_WORLD_RANK=0
+export OMPI_COMM_WORLD_SIZE=1
+export OMPI_COMM_WORLD_LOCAL_RANK=0
+export MASTER_ADDR='127.0.0.1'
+export MASTER_PORT=6008
+
+python train.py

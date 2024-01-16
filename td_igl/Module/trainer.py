@@ -74,7 +74,7 @@ class Trainer(object):
 
         self.world_size = 1
         self.local_rank = -1
-        self.dist_on_itp = True
+        self.dist_on_itp = False
         self.dist_url = "env://"
         return
 
