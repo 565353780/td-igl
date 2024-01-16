@@ -206,12 +206,18 @@ class Trainer(object):
                     optimizer.zero_grad()
                     if model_ema is not None:
                         model_ema.update(model)
-                loss_scale_value = loss_scaler.state_dict()["scale"]
 
-            torch.cuda.synchronize()
+                # FIXME: here loss_scale_value may not exist!
+                loss_scale_value = None
+                if "scale" in loss_scaler.state_dict().keys():
+                    loss_scale_value = loss_scaler.state_dict()["scale"]
+
+            if torch.cuda.is_available():
+                torch.cuda.synchronize()
 
             metric_logger.update(loss=loss_value)
-            metric_logger.update(loss_scale=loss_scale_value)
+            if loss_scale_value:
+                metric_logger.update(loss_scale=loss_scale_value)
             metric_logger.update(loss_x=loss_x)
             metric_logger.update(loss_y=loss_y)
             metric_logger.update(loss_z=loss_z)
@@ -234,7 +240,8 @@ class Trainer(object):
 
             if log_writer is not None:
                 log_writer.update(loss=loss_value, head="loss")
-                log_writer.update(loss_scale=loss_scale_value, head="opt")
+                if loss_scale_value:
+                    log_writer.update(loss_scale=loss_scale_value, head="opt")
                 log_writer.update(lr=max_lr, head="opt")
                 log_writer.update(min_lr=min_lr, head="opt")
                 log_writer.update(weight_decay=weight_decay_value, head="opt")

@@ -8,6 +8,7 @@ class NativeScalerWithGradNormCount:
 
     def __init__(self):
         self._scaler = torch.cuda.amp.GradScaler()  # init_scale=2048
+        return
 
     def __call__(
         self,
