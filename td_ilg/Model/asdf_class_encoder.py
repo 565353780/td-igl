@@ -7,20 +7,20 @@ from td_ilg.Method.model import sample
 from td_ilg.Config.cfg import _cfg
 
 
-class ClassEncoder(nn.Module):
+class ASDFClassEncoder(nn.Module):
     """Container module with an encoder, a recurrent or transformer module, and a decoder."""
 
     def __init__(
         self,
-        ninp,
-        nhead,
-        nlayers,
+        asdf_dim=40,
+        ninp=16,
+        nhead=2,
+        nlayers=24,
         nclasses=55,
         coord_vocab_size=256,
-        latent_vocab_size=512,
         reso=128,
     ):
-        super(ClassEncoder, self).__init__()
+        super(ASDFClassEncoder, self).__init__()
         self.reso = reso
 
         self.pos_emb = nn.Parameter(nn.Embedding(reso, ninp).weight[None])
@@ -28,12 +28,14 @@ class ClassEncoder(nn.Module):
         self.x_tok_emb = nn.Embedding(coord_vocab_size, ninp)
         self.y_tok_emb = nn.Embedding(coord_vocab_size, ninp)
         self.z_tok_emb = nn.Embedding(coord_vocab_size, ninp)
-
-        self.latent_tok_emb = nn.Embedding(latent_vocab_size, ninp)
+        self.tx_tok_emb = nn.Embedding(coord_vocab_size, ninp)
+        self.ty_tok_emb = nn.Embedding(coord_vocab_size, ninp)
+        self.tz_tok_emb = nn.Embedding(coord_vocab_size, ninp)
+        self.latent_encoder = nn.Linear(asdf_dim - 6, ninp, bias=False)
 
         self.coord_vocab_size = coord_vocab_size
 
-        self.latent_vocab_size = latent_vocab_size
+        self.latent_vocab_size = asdf_dim - 6
 
         self.class_enc = nn.Embedding(nclasses, ninp)
 
@@ -57,29 +59,44 @@ class ClassEncoder(nn.Module):
         self.ln_z = nn.LayerNorm(ninp)
         self.z_head = nn.Linear(ninp, coord_vocab_size, bias=False)
 
+        self.ln_tx = nn.LayerNorm(ninp)
+        self.tx_head = nn.Linear(ninp, coord_vocab_size, bias=False)
+
+        self.ln_ty = nn.LayerNorm(ninp)
+        self.ty_head = nn.Linear(ninp, coord_vocab_size, bias=False)
+
+        self.ln_tz = nn.LayerNorm(ninp)
+        self.tz_head = nn.Linear(ninp, coord_vocab_size, bias=False)
+
         self.ln_latent = nn.LayerNorm(ninp)
-        self.latent_head = nn.Linear(ninp, latent_vocab_size, bias=False)
+        self.latent_head = nn.Linear(ninp, asdf_dim - 6, bias=False)
 
         self.default_cfg = _cfg()
         return
 
-    def forward(self, coordinates, latents, classes):
+    def forward(self, positions, params, classes):
         features = self.class_enc(classes)[:, None]  # B x 1 x C
 
         position_embeddings = self.pos_emb  # 1 x S x C
 
-        x_token_embeddings = self.x_tok_emb(coordinates[:, :, 0])  # B x S x C
-        y_token_embeddings = self.y_tok_emb(coordinates[:, :, 1])  # B x S x C
-        z_token_embeddings = self.z_tok_emb(coordinates[:, :, 2])  # B x S x C
-        latent_token_embeddings = self.latent_tok_emb(latents)  # B x S x C
+        x_token_embeddings = self.x_tok_emb(positions[:, :, 0])  # B x S x C
+        y_token_embeddings = self.y_tok_emb(positions[:, :, 1])  # B x S x C
+        z_token_embeddings = self.z_tok_emb(positions[:, :, 2])  # B x S x C
+        tx_token_embeddings = self.tx_tok_emb(positions[:, :, 3])  # B x S x C
+        ty_token_embeddings = self.ty_tok_emb(positions[:, :, 4])  # B x S x C
+        tz_token_embeddings = self.tz_tok_emb(positions[:, :, 5])  # B x S x C
+        latent_features = self.latent_encoder(params)
 
         token_embeddings = torch.cat(
             [
                 features,
-                latent_token_embeddings
+                latent_features
                 + x_token_embeddings
                 + y_token_embeddings
-                + z_token_embeddings,
+                + z_token_embeddings
+                + tx_token_embeddings
+                + ty_token_embeddings
+                + tz_token_embeddings,
             ],
             dim=1,
         )  # B x (1+S) x C
@@ -92,7 +109,7 @@ class ClassEncoder(nn.Module):
         x_logits = (
             F.log_softmax(self.x_head(self.ln_x(x)), dim=-1)
             .permute(0, 2, 1)
-            .view(coordinates.shape[0], self.coord_vocab_size, self.reso)
+            .view(positions.shape[0], self.coord_vocab_size, self.reso)
         )
         x = x + x_token_embeddings + position_embeddings
 
@@ -101,7 +118,7 @@ class ClassEncoder(nn.Module):
         y_logits = (
             F.log_softmax(self.y_head(self.ln_y(x)), dim=-1)
             .permute(0, 2, 1)
-            .view(coordinates.shape[0], self.coord_vocab_size, self.reso)
+            .view(positions.shape[0], self.coord_vocab_size, self.reso)
         )
         x = x + x_token_embeddings + y_token_embeddings + position_embeddings
 
@@ -110,7 +127,7 @@ class ClassEncoder(nn.Module):
         z_logits = (
             F.log_softmax(self.z_head(self.ln_z(x)), dim=-1)
             .permute(0, 2, 1)
-            .view(coordinates.shape[0], self.coord_vocab_size, self.reso)
+            .view(positions.shape[0], self.coord_vocab_size, self.reso)
         )
         x = (
             x
@@ -120,15 +137,74 @@ class ClassEncoder(nn.Module):
             + position_embeddings
         )
 
-        for block in self.transformer.blocks[20:]:
+        for block in self.transformer.blocks[20:24]:
+            x = block(x)
+        tx_logits = (
+            F.log_softmax(self.tx_head(self.ln_tx(x)), dim=-1)
+            .permute(0, 2, 1)
+            .view(positions.shape[0], self.coord_vocab_size, self.reso)
+        )
+        x = (
+            x
+            + x_token_embeddings
+            + y_token_embeddings
+            + z_token_embeddings
+            + tx_token_embeddings
+            + position_embeddings
+        )
+
+        for block in self.transformer.blocks[24:28]:
+            x = block(x)
+        ty_logits = (
+            F.log_softmax(self.ty_head(self.ln_ty(x)), dim=-1)
+            .permute(0, 2, 1)
+            .view(positions.shape[0], self.coord_vocab_size, self.reso)
+        )
+        x = (
+            x
+            + x_token_embeddings
+            + y_token_embeddings
+            + z_token_embeddings
+            + tx_token_embeddings
+            + ty_token_embeddings
+            + position_embeddings
+        )
+
+        for block in self.transformer.blocks[24:28]:
+            x = block(x)
+        tz_logits = (
+            F.log_softmax(self.tz_head(self.ln_tz(x)), dim=-1)
+            .permute(0, 2, 1)
+            .view(positions.shape[0], self.coord_vocab_size, self.reso)
+        )
+        x = (
+            x
+            + x_token_embeddings
+            + y_token_embeddings
+            + z_token_embeddings
+            + tx_token_embeddings
+            + ty_token_embeddings
+            + tz_token_embeddings
+            + position_embeddings
+        )
+
+        for block in self.transformer.blocks[28:]:
             x = block(x)
         latent_logits = (
             F.log_softmax(self.latent_head(self.ln_latent(x)), dim=-1)
             .permute(0, 2, 1)
-            .view(coordinates.shape[0], self.latent_vocab_size, self.reso)
+            .view(positions.shape[0], self.latent_vocab_size, self.reso)
         )
 
-        return x_logits, y_logits, z_logits, latent_logits
+        return (
+            x_logits,
+            y_logits,
+            z_logits,
+            tx_logits,
+            ty_logits,
+            tz_logits,
+            latent_logits,
+        )
 
     @torch.no_grad()
     def sample(self, cond):
