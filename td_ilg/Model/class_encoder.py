@@ -83,7 +83,8 @@ class ClassEncoder(nn.Module):
             ],
             dim=1,
         )  # B x (1+S) x C
-        embeddings = token_embeddings[:, :-1] + position_embeddings  # B x S x C
+        embeddings = token_embeddings[:, :-1] + \
+            position_embeddings  # B x S x C
 
         x = self.transformer.drop(embeddings)
 
@@ -185,7 +186,8 @@ class ClassEncoder(nn.Module):
                 x_token_embeddings = self.x_tok_emb(coord1)  # B x S x C
                 y_token_embeddings = self.y_tok_emb(coord2)  # B x S x C
                 z_token_embeddings = self.z_tok_emb(coord3)  # B x S x C
-                latent_token_embeddings = self.latent_tok_emb(latent)  # B x S x C
+                latent_token_embeddings = self.latent_tok_emb(
+                    latent)  # B x S x C
 
                 token_embeddings = torch.cat(
                     [
@@ -211,7 +213,8 @@ class ClassEncoder(nn.Module):
                 coord1 = torch.cat((coord1, ix), dim=1)
                 x_token_embeddings = self.x_tok_emb(coord1)
 
-                x = x + x_token_embeddings + position_embeddings[:, : x.shape[1], :]
+                x = x + x_token_embeddings + \
+                    position_embeddings[:, : x.shape[1], :]
                 for block in self.transformer.blocks[12:16]:
                     x = block(x)  # B x S x C
                 coord2_logits = self.y_head(self.ln_y(x))

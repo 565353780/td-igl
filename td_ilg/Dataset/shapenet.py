@@ -31,17 +31,11 @@ class ShapeNet(data.Dataset):
         self.surface_sampling = surface_sampling
 
         self.dataset_folder = dataset_folder
-        self.point_folder = os.path.join(
-            self.dataset_folder, "ShapeNetV2_point")
-        self.mesh_folder = os.path.join(
-            self.dataset_folder, "ShapeNetV2_watertight")
+        self.point_folder = os.path.join(self.dataset_folder, "ShapeNetV2_point")
+        self.mesh_folder = os.path.join(self.dataset_folder, "ShapeNetV2_watertight")
 
-        self.models = [
-            {
-                "category": 0,
-                "model": "test",
-            }
-        ] * 1000
+        # FIXME: load real data later
+        self.models = list(range(1000))
         return
 
         if categories is None:
@@ -53,7 +47,6 @@ class ShapeNet(data.Dataset):
                 and c.startswith("0")
             ]
         categories.sort()
-        print(categories)
 
         self.models = []
         for c_idx, c in enumerate(categories):
@@ -70,24 +63,11 @@ class ShapeNet(data.Dataset):
         return
 
     def __getitem__(self, idx):
+        # FIXME: load real data later
+        return torch.rand([2048, 3]), torch.rand([2048, 3]), torch.rand([2048, 3]), 0
+
         category = self.models[idx]["category"]
         model = self.models[idx]["model"]
-
-        points = np.random.rand(2048, 3)
-        labels = np.random.rand(2048, 1)
-        if self.return_surface:
-            surface = np.random.rand(2048, 3)
-            return (
-                torch.from_numpy(points).type(torch.float32),
-                torch.from_numpy(labels).type(torch.float32),
-                torch.from_numpy(surface).type(torch.float32),
-                0,
-            )
-        return (
-            torch.from_numpy(points).type(torch.float32),
-            torch.from_numpy(labels).type(torch.float32),
-            0,
-        )
 
         point_path = os.path.join(self.point_folder, category, model + ".npz")
         try:

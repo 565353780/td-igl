@@ -88,8 +88,7 @@ class Trainer(object):
         with torch.no_grad():
             _, _, centers_quantized, _, _, encodings = vqvae.encode(surface)
 
-        centers_quantized, encodings = sortCenters(
-            centers_quantized, encodings)
+        centers_quantized, encodings = sortCenters(centers_quantized, encodings)
 
         x_logits, y_logits, z_logits, latent_logits = model(
             centers_quantized, encodings, categories
@@ -130,8 +129,7 @@ class Trainer(object):
     ):
         model.train(True)
         metric_logger = MetricLogger(delimiter="  ")
-        metric_logger.add_meter("lr", SmoothedValue(
-            window_size=1, fmt="{value:.6f}"))
+        metric_logger.add_meter("lr", SmoothedValue(window_size=1, fmt="{value:.6f}"))
         metric_logger.add_meter(
             "min_lr", SmoothedValue(window_size=1, fmt="{value:.6f}")
         )
@@ -190,8 +188,7 @@ class Trainer(object):
             else:
                 # this attribute is added by timm on one optimizer (adahessian)
                 is_second_order = (
-                    hasattr(
-                        optimizer, "is_second_order") and optimizer.is_second_order
+                    hasattr(optimizer, "is_second_order") and optimizer.is_second_order
                 )
                 loss /= update_freq
                 grad_norm = loss_scaler(
@@ -272,11 +269,9 @@ class Trainer(object):
             # compute output
             with torch.cuda.amp.autocast():
                 with torch.no_grad():
-                    _, _, centers_quantized, _, _, encodings = vqvae.encode(
-                        surface)
+                    _, _, centers_quantized, _, _, encodings = vqvae.encode(surface)
 
-                centers_quantized, encodings = sortCenters(
-                    centers_quantized, encodings)
+                centers_quantized, encodings = sortCenters(centers_quantized, encodings)
 
                 x_logits, y_logits, z_logits, latent_logits = model(
                     centers_quantized, encodings, categories
@@ -297,8 +292,7 @@ class Trainer(object):
             metric_logger.update(loss_latent=loss_latent.item())
         # gather the stats from all processes
         metric_logger.synchronize_between_processes()
-        print(
-            "* loss {losses.global_avg:.3f} ".format(losses=metric_logger.loss))
+        print("* loss {losses.global_avg:.3f} ".format(losses=metric_logger.loss))
         return {k: meter.global_avg for k, meter in metric_logger.meters.items()}
 
     def train(self) -> bool:
@@ -313,13 +307,11 @@ class Trainer(object):
 
         cudnn.benchmark = True
 
-        dataset_train = build_shape_surface_occupancy_dataset(
-            "train", args=self)
+        dataset_train = build_shape_surface_occupancy_dataset("train", args=self)
         if self.disable_eval:
             dataset_val = None
         else:
-            dataset_val = build_shape_surface_occupancy_dataset(
-                "val", args=self)
+            dataset_val = build_shape_surface_occupancy_dataset("val", args=self)
 
         if True:  # self.distributed:
             num_tasks = get_world_size()
@@ -415,8 +407,7 @@ class Trainer(object):
             print("Using EMA with decay = %.8f" % self.model_ema_decay)
 
         model_without_ddp = model
-        n_parameters = sum(p.numel()
-                           for p in model.parameters() if p.requires_grad)
+        n_parameters = sum(p.numel() for p in model.parameters() if p.requires_grad)
 
         print("Model = %s" % str(model_without_ddp))
         print("number of params:", n_parameters)
@@ -539,8 +530,7 @@ class Trainer(object):
             if data_loader_val is not None and (
                 epoch % 10 == 0 or epoch + 1 == self.epochs
             ):
-                test_stats = self.evaluate(
-                    data_loader_val, model, vqvae, self.device)
+                test_stats = self.evaluate(data_loader_val, model, vqvae, self.device)
 
                 if self.output_dir and self.save_ckpt:
                     save_model(
