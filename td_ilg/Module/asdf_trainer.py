@@ -58,7 +58,7 @@ class ASDFTrainer(object):
         self.warmup_epochs = 40
         self.warmup_steps = -1
 
-        self.asdf_dataset_folder_path = "/home/chli/chLi/Dataset/ShapeNet/asdf/"
+        self.asdf_dataset_folder_path = "/home/chli/Nutstore Files/paper-materials-ASDF/Dataset/ASDF/asdf_final/"
         self.device = "cuda"
 
         self.seed = 0
@@ -81,8 +81,8 @@ class ASDFTrainer(object):
         self.dist_url = "env://"
 
         current_time = getCurrentTime()
-        self.output_dir = "./output/"+ current_time
-        self.log_dir = "./logs/" + current_time
+        self.output_dir = "./output/"+ current_time + '/'
+        self.log_dir = "./logs/" + current_time + '/'
         return
 
     def train_batch(self, model, positions, params, categories, criterion):

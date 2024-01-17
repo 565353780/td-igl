@@ -17,8 +17,20 @@ class ASDFDataset(Dataset):
         return
         '''
 
+        self.loadFinalASDFDataset(asdf_dataset_folder_path)
+        return
         self.loadDataset(asdf_dataset_folder_path)
         return
+
+    def loadFinalASDFDataset(self, final_asdf_dataset_folder_path: str) -> bool:
+        final_asdf_filename_list = os.listdir(final_asdf_dataset_folder_path)
+        for final_asdf_filename in final_asdf_filename_list:
+            if final_asdf_filename[-10:] != '_final.npy':
+                continue
+
+            self.asdf_file_list.append(final_asdf_dataset_folder_path + final_asdf_filename)
+
+        return True
 
     def loadDataset(self, asdf_dataset_folder_path: str) -> bool:
         class_foldername_list = os.listdir(asdf_dataset_folder_path)
@@ -84,7 +96,7 @@ class ASDFDataset(Dataset):
         positions = shuffle_asdf[:, :6]
         params = shuffle_asdf[:, 6:]
 
-        embedding_positions = ((positions + 0.5) * 255.0).astype(np.longlong)
+        embedding_positions = ((positions + 1.0) * 128.0).astype(np.longlong)
 
         return (
             torch.from_numpy(embedding_positions).type(torch.long),
