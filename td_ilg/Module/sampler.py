@@ -27,13 +27,13 @@ class Sampler(object):
         )
         """
         model = ClassEncoder(
-            ninp=32,
+            ninp=16,
             nhead=2,
             nlayers=24,
             nclasses=55,
             coord_vocab_size=256,
             latent_vocab_size=1024,
-            reso=512,
+            reso=12,
         )
 
         model.to(self.device)

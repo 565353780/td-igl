@@ -24,6 +24,7 @@ class ASDFClassEncoder(nn.Module):
         self.reso = reso
 
         self.pos_emb = nn.Parameter(nn.Embedding(reso, ninp).weight[None])
+        self.tpos_emb = nn.Parameter(nn.Embedding(reso, ninp).weight[None])
 
         self.x_tok_emb = nn.Embedding(coord_vocab_size, ninp)
         self.y_tok_emb = nn.Embedding(coord_vocab_size, ninp)
@@ -78,6 +79,7 @@ class ASDFClassEncoder(nn.Module):
         features = self.class_enc(classes)[:, None]  # B x 1 x C
 
         position_embeddings = self.pos_emb  # 1 x S x C
+        tposition_embeddings = self.tpos_emb  # 1 x S x C
 
         x_token_embeddings = self.x_tok_emb(positions[:, :, 0])  # B x S x C
         y_token_embeddings = self.y_tok_emb(positions[:, :, 1])  # B x S x C
@@ -151,6 +153,7 @@ class ASDFClassEncoder(nn.Module):
             + z_token_embeddings
             + tx_token_embeddings
             + position_embeddings
+            + tposition_embeddings
         )
 
         for block in self.transformer.blocks[24:28]:
@@ -168,6 +171,7 @@ class ASDFClassEncoder(nn.Module):
             + tx_token_embeddings
             + ty_token_embeddings
             + position_embeddings
+            + tposition_embeddings
         )
 
         for block in self.transformer.blocks[24:28]:
@@ -186,15 +190,12 @@ class ASDFClassEncoder(nn.Module):
             + ty_token_embeddings
             + tz_token_embeddings
             + position_embeddings
+            + tposition_embeddings
         )
 
         for block in self.transformer.blocks[28:]:
             x = block(x)
-        latent_logits = (
-            F.log_softmax(self.latent_head(self.ln_latent(x)), dim=-1)
-            .permute(0, 2, 1)
-            .view(positions.shape[0], self.latent_vocab_size, self.reso)
-        )
+        latent_logits = self.latent_head(self.ln_latent(x))
 
         return (
             x_logits,
@@ -210,7 +211,7 @@ class ASDFClassEncoder(nn.Module):
     def sample(self, cond):
         cond = cond[:, None]
 
-        position_embeddings = self.pos_emb
+        position_embeddings = self.pos_emb + self.tpos_emb
 
         coord1, coord2, coord3, latent = None, None, None, None
         for i in range(self.reso):
@@ -324,7 +325,7 @@ class ASDFClassEncoder(nn.Module):
 
     @torch.jit.ignore
     def no_weight_decay(self):
-        return {"pos_emb", "xyz_emb"}
+        return {"pos_emb", "tpos_emb", "xyz_emb"}
 
 
 def class_encoder_55_512_1024_24_K1024():

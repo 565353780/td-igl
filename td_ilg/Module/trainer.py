@@ -87,18 +87,27 @@ class Trainer(object):
     def train_batch(self, model, vqvae, surface, categories, criterion):
         with torch.no_grad():
             _, _, centers_quantized, _, _, encodings = vqvae.encode(surface)
+            print("surface:", surface.shape)
+            print("centers_quantized:", centers_quantized.shape)
+            print("encodings:", encodings.shape)
 
         centers_quantized, encodings = sortCenters(centers_quantized, encodings)
 
         x_logits, y_logits, z_logits, latent_logits = model(
             centers_quantized, encodings, categories
         )
+        print("x_logits:", x_logits.shape)
+        print("latent_logits:", latent_logits.shape)
 
         loss_x = criterion(x_logits, centers_quantized[:, :, 0])
         loss_y = criterion(y_logits, centers_quantized[:, :, 1])
         loss_z = criterion(z_logits, centers_quantized[:, :, 2])
         loss_latent = criterion(latent_logits, encodings)
         loss = loss_x + loss_y + loss_z + loss_latent
+        print("loss_x:", loss_x.shape)
+        print("loss_latent:", loss_latent.shape)
+        print("loss:", loss)
+        exit()
 
         return (
             loss,

@@ -135,17 +135,34 @@ class ClassEncoder(nn.Module):
         cond = cond[:, None]
 
         position_embeddings = self.pos_emb
+        print("sample: cond:", cond.shape, cond.dtype)
+        print(
+            "sample: position_embeddings:",
+            position_embeddings.shape,
+            position_embeddings.dtype,
+        )
 
         coord1, coord2, coord3, latent = None, None, None, None
         for i in range(self.reso):
             if coord1 is None:
                 x = self.transformer.drop(cond + position_embeddings[:, :1, :])
+                print("sample x1:", x.shape)
                 for block in self.transformer.blocks[:12]:
                     x = block(x)  # B x S x C
+                print("sample x2:", x.shape)
                 coord1_logits = self.x_head(self.ln_x(x))
+                print("sample coord1_logits:", coord1_logits.shape)
                 ix = sample(coord1_logits)
+                print("sample ix:", ix.shape)
+                print("ix:", ix)
                 coord1 = ix
+                print("sample coord1:", coord1.shape)
                 x_token_embeddings = self.x_tok_emb(coord1)
+                print(
+                    "sample x_token_embeddings:",
+                    x_token_embeddings.shape,
+                    x_token_embeddings.dtype,
+                )
 
                 x = x + x_token_embeddings + position_embeddings[:, :1, :]
                 for block in self.transformer.blocks[12:16]:
@@ -180,12 +197,15 @@ class ClassEncoder(nn.Module):
                 latent_logits = self.latent_head(self.ln_latent(x))
                 ix = sample(latent_logits)
                 latent = ix
+                print("sample latent_logits:", latent_logits.shape, latent_logits.dtype)
 
             else:
                 x_token_embeddings = self.x_tok_emb(coord1)  # B x S x C
                 y_token_embeddings = self.y_tok_emb(coord2)  # B x S x C
                 z_token_embeddings = self.z_tok_emb(coord3)  # B x S x C
                 latent_token_embeddings = self.latent_tok_emb(latent)  # B x S x C
+                print("latent_token_embeddings:", latent_token_embeddings.shape)
+                exit()
 
                 token_embeddings = torch.cat(
                     [

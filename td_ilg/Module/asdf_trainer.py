@@ -91,24 +91,27 @@ class ASDFTrainer(object):
             tx_logits,
             ty_logits,
             tz_logits,
-            latent_logits,
+            param_logits,
         ) = model(positions, params, categories)
 
-        print(x_logits.shape)
-        print(positions.shape)
-        exit()
         loss_x = criterion(x_logits, positions[:, :, 0])
         loss_y = criterion(y_logits, positions[:, :, 1])
         loss_z = criterion(z_logits, positions[:, :, 2])
-        loss_latent = criterion(latent_logits, params)
-        loss = loss_x + loss_y + loss_z + loss_latent
+        loss_tx = criterion(tx_logits, positions[:, :, 3])
+        loss_ty = criterion(ty_logits, positions[:, :, 4])
+        loss_tz = criterion(tz_logits, positions[:, :, 5])
+        loss_param = torch.nn.MSELoss()(param_logits, params)
+        loss = loss_x + loss_y + loss_z + loss_tx + loss_ty + loss_tz + loss_param
 
         return (
             loss,
             loss_x.item(),
             loss_y.item(),
             loss_z.item(),
-            loss_latent.item(),
+            loss_tx.item(),
+            loss_ty.item(),
+            loss_tz.item(),
+            loss_param.item(),
         )
 
     def train_one_epoch(
@@ -176,7 +179,16 @@ class ASDFTrainer(object):
                 raise NotImplementedError
             else:
                 with torch.cuda.amp.autocast():
-                    loss, loss_x, loss_y, loss_z, loss_latent = self.train_batch(
+                    (
+                        loss,
+                        loss_x,
+                        loss_y,
+                        loss_z,
+                        loss_tx,
+                        loss_ty,
+                        loss_tz,
+                        loss_param,
+                    ) = self.train_batch(
                         model, positions, params, categories, criterion
                     )
 
@@ -221,7 +233,10 @@ class ASDFTrainer(object):
             metric_logger.update(loss_x=loss_x)
             metric_logger.update(loss_y=loss_y)
             metric_logger.update(loss_z=loss_z)
-            metric_logger.update(loss_latent=loss_latent)
+            metric_logger.update(loss_tx=loss_tx)
+            metric_logger.update(loss_ty=loss_ty)
+            metric_logger.update(loss_tz=loss_tz)
+            metric_logger.update(loss_param=loss_param)
 
             min_lr = 10.0
             max_lr = 0.0
@@ -272,22 +287,35 @@ class ASDFTrainer(object):
 
             # compute output
             with torch.cuda.amp.autocast():
-                x_logits, y_logits, z_logits, latent_logits = model(
-                    positions, params, categories
-                )
+                (
+                    x_logits,
+                    y_logits,
+                    z_logits,
+                    tx_logits,
+                    ty_logits,
+                    tz_logits,
+                    param_logits,
+                ) = model(positions, params, categories)
 
                 loss_x = criterion(x_logits, positions[:, :, 0])
                 loss_y = criterion(y_logits, positions[:, :, 1])
                 loss_z = criterion(z_logits, positions[:, :, 2])
-
-                loss_latent = criterion(latent_logits, params)
-                loss = loss_x + loss_y + loss_z + loss_latent
+                loss_tx = criterion(tx_logits, positions[:, :, 3])
+                loss_ty = criterion(ty_logits, positions[:, :, 4])
+                loss_tz = criterion(tz_logits, positions[:, :, 5])
+                loss_param = torch.nn.MSELoss()(param_logits, params)
+                loss = (
+                    loss_x + loss_y + loss_z + loss_tx + loss_ty + loss_tz + loss_param
+                )
 
             metric_logger.update(loss=loss.item())
             metric_logger.update(loss_x=loss_x.item())
             metric_logger.update(loss_y=loss_y.item())
             metric_logger.update(loss_z=loss_z.item())
-            metric_logger.update(loss_latent=loss_latent.item())
+            metric_logger.update(loss_tx=loss_tx.item())
+            metric_logger.update(loss_ty=loss_ty.item())
+            metric_logger.update(loss_tz=loss_tz.item())
+            metric_logger.update(loss_param=loss_param.item())
         # gather the stats from all processes
         metric_logger.synchronize_between_processes()
         print("* loss {losses.global_avg:.3f} ".format(losses=metric_logger.loss))
