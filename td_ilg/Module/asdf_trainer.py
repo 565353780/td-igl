@@ -31,7 +31,6 @@ from td_ilg.Module.Logger.tensorboard import TensorboardLogger
 class ASDFTrainer(object):
     def __init__(self) -> None:
         self.resolution = 100
-        self.resolution = 12
 
         self.batch_size = 2
         self.epochs = 400
@@ -58,7 +57,7 @@ class ASDFTrainer(object):
         self.warmup_epochs = 40
         self.warmup_steps = -1
 
-        self.data_path = "./test/"
+        self.asdf_dataset_folder_path = "/home/chli/chLi/Dataset/ShapeNet/asdf/"
         self.output_dir = "./output/"
         self.log_dir = "./logs/"
         self.device = "cpu"
@@ -333,28 +332,12 @@ class ASDFTrainer(object):
 
         cudnn.benchmark = True
 
-        dataset_train = ASDFDataset(
-            self.data_path,
-            split="train",
-            sampling=True,
-            num_samples=1024,
-            return_surface=True,
-            surface_sampling=True,
-            pc_size=self.point_cloud_size,
-        )
+        dataset_train = ASDFDataset(self.asdf_dataset_folder_path)
 
         if self.disable_eval:
             dataset_val = None
         else:
-            dataset_val = ASDFDataset(
-                self.data_path,
-                split="val",
-                transform=None,
-                sampling=False,
-                return_surface=True,
-                surface_sampling=True,
-                pc_size=self.point_cloud_size,
-            )
+            dataset_val = ASDFDataset(self.asdf_dataset_folder_path)
 
         if True:  # self.distributed:
             num_tasks = get_world_size()

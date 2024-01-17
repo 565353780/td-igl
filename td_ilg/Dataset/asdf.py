@@ -1,58 +1,86 @@
 import os
 import torch
 import numpy as np
-from torch.utils import data
+from tqdm import tqdm
+from torch.utils.data import Dataset
 
 from td_ilg.Config.shapenet import CATEGORY_IDS
 
 
-class ASDFDataset(data.Dataset):
-    def __init__(
-        self,
-        dataset_folder,
-        split,
-        categories=None,
-        transform=None,
-        sampling=True,
-        num_samples=4096,
-        return_surface=True,
-        surface_sampling=True,
-        pc_size=2048,
-    ):
-        self.pc_size = pc_size
+class ASDFDataset(Dataset):
+    def __init__(self, asdf_dataset_folder_path: str) -> None:
+        self.asdf_file_list = []
+        self.context_files_list = []
 
-        self.transform = transform
-        self.num_samples = num_samples
-        self.sampling = sampling
-        self.split = split
-
-        self.dataset_folder = dataset_folder
-        self.return_surface = return_surface
-        self.surface_sampling = surface_sampling
-
-        self.dataset_folder = dataset_folder
-        self.point_folder = os.path.join(self.dataset_folder, "ShapeNetV2_point")
-        self.mesh_folder = os.path.join(self.dataset_folder, "ShapeNetV2_watertight")
-
-        self.models = [
-            {
-                "category": 0,
-                "model": "test",
-            }
-        ] * 1000
+        self.loadDataset(asdf_dataset_folder_path)
         return
 
-    def __getitem__(self, idx):
-        resolution = 12
-        coord_vocab_size = 256
+    def loadDataset(self, asdf_dataset_folder_path: str) -> bool:
+        class_foldername_list = os.listdir(asdf_dataset_folder_path)
 
-        positions = np.random.randint(0, coord_vocab_size, [resolution, 6])
-        params = np.random.rand(resolution, 34)
+        for class_foldername in class_foldername_list:
+            model_folder_path = asdf_dataset_folder_path + class_foldername + "/"
+            if not os.path.exists(model_folder_path):
+                continue
+
+            model_filename_list = os.listdir(model_folder_path)
+
+            for model_filename in tqdm(model_filename_list):
+                asdf_folder_path = model_folder_path + model_filename + "/"
+                if not os.path.exists(asdf_folder_path):
+                    continue
+
+                asdf_filename_list = os.listdir(asdf_folder_path)
+
+                if "final.npy" not in asdf_filename_list:
+                    continue
+
+                context_files = []
+
+                for asdf_filename in asdf_filename_list:
+                    if asdf_filename == "final.npy":
+                        continue
+
+                    if asdf_filename[-4:] != ".npy":
+                        continue
+
+                    context_files.append(asdf_folder_path + asdf_filename)
+
+                self.asdf_file_list.append(asdf_folder_path + "final.npy")
+                self.context_files_list.append(context_files)
+
+                self.asdf_file_list = self.asdf_file_list * 1000000
+                self.context_files_list = [self.context_files_list[0]] * 1000000
+                return True
+
+        return True
+
+    def __len__(self):
+        assert len(self.asdf_file_list) == len(
+            self.context_files_list
+        ), "Number of feature files and label files should be same"
+        return len(self.asdf_file_list)
+
+    def __getitem__(self, idx):
+        asdf_file_path = self.asdf_file_list[idx]
+        asdf = np.load(asdf_file_path, allow_pickle=True).item()["params"]
+
+        """
+        context_file_path = choice(self.context_files_list[idx])
+        context = (
+            np.load(context_file_path, allow_pickle=True)
+            .item()["params"]
+            .reshape(1, 100, 40)
+        )
+        """
+
+        positions = asdf[:, :6]
+        params = asdf[:, 6:]
+
+        embedding_positions = ((positions + 0.5) * 255.0).astype(int)
+
         return (
-            torch.from_numpy(positions).type(torch.long),
+            torch.from_numpy(embedding_positions).type(int),
             torch.from_numpy(params).type(torch.float32),
             CATEGORY_IDS["02691156"],
         )
-
-    def __len__(self):
-        return len(self.models)
