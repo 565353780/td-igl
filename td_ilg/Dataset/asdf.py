@@ -10,13 +10,12 @@ from td_ilg.Config.shapenet import CATEGORY_IDS
 class ASDFDataset(Dataset):
     def __init__(self, asdf_dataset_folder_path: str) -> None:
         self.asdf_file_list = []
-        self.context_files_list = []
+        # self.context_files_list = []
 
-        """
-        self.asdf_file_list = [1] * 10000
-        self.context_files_list = [1] * 10000
+        '''
+        self.asdf_file_list = ['/home/chli/Nutstore Files/paper-materials-ASDF/Dataset/final.npy'] * 1204
         return
-        """
+        '''
 
         self.loadDataset(asdf_dataset_folder_path)
         return
@@ -53,18 +52,11 @@ class ASDFDataset(Dataset):
                     context_files.append(asdf_folder_path + asdf_filename)
 
                 self.asdf_file_list.append(asdf_folder_path + "final.npy")
-                self.context_files_list.append(context_files)
-
-                self.asdf_file_list = self.asdf_file_list * 1000000
-                self.context_files_list = [self.context_files_list[0]] * 1000000
-                return True
+                # self.context_files_list.append(context_files)
 
         return True
 
     def __len__(self):
-        assert len(self.asdf_file_list) == len(
-            self.context_files_list
-        ), "Number of feature files and label files should be same"
         return len(self.asdf_file_list)
 
     def __getitem__(self, idx):
@@ -78,6 +70,7 @@ class ASDFDataset(Dataset):
 
         asdf_file_path = self.asdf_file_list[idx]
         asdf = np.load(asdf_file_path, allow_pickle=True).item()["params"]
+        shuffle_asdf = np.random.permutation(asdf)
 
         """
         context_file_path = choice(self.context_files_list[idx])
@@ -88,8 +81,8 @@ class ASDFDataset(Dataset):
         )
         """
 
-        positions = asdf[:, :6]
-        params = asdf[:, 6:]
+        positions = shuffle_asdf[:, :6]
+        params = shuffle_asdf[:, 6:]
 
         embedding_positions = ((positions + 0.5) * 255.0).astype(np.longlong)
 

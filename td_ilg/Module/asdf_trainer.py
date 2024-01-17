@@ -20,6 +20,7 @@ from td_ilg.Method.distributed import (
     get_world_size,
     is_main_process,
 )
+from td_ilg.Method.time import getCurrentTime
 from td_ilg.Optimizer.opt import create_optimizer
 from td_ilg.Optimizer.layer_decay_value_assigner import LayerDecayValueAssigner
 from td_ilg.Optimizer.native_scaler import NativeScalerWithGradNormCount as NativeScaler
@@ -32,10 +33,10 @@ class ASDFTrainer(object):
     def __init__(self) -> None:
         self.resolution = 100
 
-        self.batch_size = 2
-        self.epochs = 400
+        self.batch_size = 1600
+        self.epochs = 40000
         self.update_freq = 1
-        self.save_ckpt_freq = 20
+        self.save_ckpt_freq = 1000
         self.point_cloud_size = 2048
         self.drop = 0.0
         self.attn_drop_rate = 0.0
@@ -58,9 +59,7 @@ class ASDFTrainer(object):
         self.warmup_steps = -1
 
         self.asdf_dataset_folder_path = "/home/chli/chLi/Dataset/ShapeNet/asdf/"
-        self.output_dir = "./output/"
-        self.log_dir = "./logs/"
-        self.device = "cpu"
+        self.device = "cuda"
 
         self.seed = 0
         self.resume = None
@@ -80,6 +79,10 @@ class ASDFTrainer(object):
         self.local_rank = -1
         self.dist_on_itp = False
         self.dist_url = "env://"
+
+        current_time = getCurrentTime()
+        self.output_dir = "./output/"+ current_time
+        self.log_dir = "./logs/" + current_time
         return
 
     def train_batch(self, model, positions, params, categories, criterion):
@@ -252,6 +255,13 @@ class ASDFTrainer(object):
             metric_logger.update(grad_norm=grad_norm)
 
             if log_writer is not None:
+                log_writer.update(loss_x=loss_x, head="loss")
+                log_writer.update(loss_y=loss_y, head="loss")
+                log_writer.update(loss_z=loss_z, head="loss")
+                log_writer.update(loss_tx=loss_tx, head="loss")
+                log_writer.update(loss_ty=loss_ty, head="loss")
+                log_writer.update(loss_tz=loss_tz, head="loss")
+                log_writer.update(param=loss_param, head="loss")
                 log_writer.update(loss=loss_value, head="loss")
                 if loss_scale_value:
                     log_writer.update(loss_scale=loss_scale_value, head="opt")
@@ -332,6 +342,9 @@ class ASDFTrainer(object):
         cudnn.benchmark = True
 
         dataset_train = ASDFDataset(self.asdf_dataset_folder_path)
+
+        if len(dataset_train) < self.batch_size:
+            self.batch_size = len(dataset_train)
 
         if self.disable_eval:
             dataset_val = None
