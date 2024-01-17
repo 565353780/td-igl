@@ -44,23 +44,23 @@ class ASDFTrainer(object):
         self.model_ema = False
 
         self.opt = "adamw"
+        self.lr = 1e-3
+        self.warmup_lr = 1e-6
+        self.min_lr = 1e-6
+        self.weight_decay = 0.05
+        self.weight_decay_end = None
         self.opt_eps = 1e-8
         self.opt_betas = None
         self.clip_grad = None
         self.momentum = 0.9
-        self.weight_decay = 0.05
-        self.weight_decay_end = None
-        self.lr = 1e-3
         self.layer_decay = 1.0
-        self.warmup_lr = 1e-6
-        self.min_lr = 1e-6
         self.warmup_epochs = 40
         self.warmup_steps = -1
 
         self.asdf_dataset_folder_path = "/home/chli/chLi/Dataset/ShapeNet/asdf/"
         self.output_dir = "./output/"
         self.log_dir = "./logs/"
-        self.device = "cpu"
+        self.device = "cuda"
 
         self.seed = 0
         self.resume = None
@@ -119,7 +119,6 @@ class ASDFTrainer(object):
         criterion: torch.nn.Module,
         data_loader: Iterable,
         optimizer: torch.optim.Optimizer,
-        device: torch.device,
         epoch: int,
         loss_scaler,
         max_norm: float = 0,
@@ -159,7 +158,7 @@ class ASDFTrainer(object):
                 or wd_schedule_values is not None
                 and data_iter_step % update_freq == 0
             ):
-                for i, param_group in enumerate(optimizer.param_groups):
+                for param_group in optimizer.param_groups:
                     if lr_schedule_values is not None:
                         param_group["lr"] = (
                             lr_schedule_values[it] * param_group["lr_scale"]
@@ -269,7 +268,7 @@ class ASDFTrainer(object):
         return {k: meter.global_avg for k, meter in metric_logger.meters.items()}
 
     @torch.no_grad()
-    def evaluate(self, data_loader, model, device):
+    def evaluate(self, data_loader, model):
         criterion = torch.nn.NLLLoss()
 
         metric_logger = MetricLogger(delimiter="  ")
@@ -521,7 +520,6 @@ class ASDFTrainer(object):
                 criterion,
                 data_loader_train,
                 optimizer,
-                self.device,
                 epoch,
                 loss_scaler,
                 self.clip_grad,
@@ -548,7 +546,7 @@ class ASDFTrainer(object):
             if data_loader_val is not None and (
                 epoch % 10 == 0 or epoch + 1 == self.epochs
             ):
-                test_stats = self.evaluate(data_loader_val, model, self.device)
+                test_stats = self.evaluate(data_loader_val, model)
 
                 if self.output_dir and self.save_ckpt:
                     save_model(
