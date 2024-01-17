@@ -12,6 +12,12 @@ class ASDFDataset(Dataset):
         self.asdf_file_list = []
         self.context_files_list = []
 
+        """
+        self.asdf_file_list = [1] * 10000
+        self.context_files_list = [1] * 10000
+        return
+        """
+
         self.loadDataset(asdf_dataset_folder_path)
         return
 
@@ -62,6 +68,14 @@ class ASDFDataset(Dataset):
         return len(self.asdf_file_list)
 
     def __getitem__(self, idx):
+        """
+        return (
+            torch.randint(0, 256, [100, 6]).type(torch.long),
+            torch.rand(100, 34).type(torch.float32),
+            CATEGORY_IDS["02691156"],
+        )
+        """
+
         asdf_file_path = self.asdf_file_list[idx]
         asdf = np.load(asdf_file_path, allow_pickle=True).item()["params"]
 
@@ -77,10 +91,10 @@ class ASDFDataset(Dataset):
         positions = asdf[:, :6]
         params = asdf[:, 6:]
 
-        embedding_positions = ((positions + 0.5) * 255.0).astype(int)
+        embedding_positions = ((positions + 0.5) * 255.0).astype(np.longlong)
 
         return (
-            torch.from_numpy(embedding_positions).type(int),
+            torch.from_numpy(embedding_positions).type(torch.long),
             torch.from_numpy(params).type(torch.float32),
             CATEGORY_IDS["02691156"],
         )

@@ -60,7 +60,7 @@ class ASDFTrainer(object):
         self.asdf_dataset_folder_path = "/home/chli/chLi/Dataset/ShapeNet/asdf/"
         self.output_dir = "./output/"
         self.log_dir = "./logs/"
-        self.device = "cuda"
+        self.device = "cpu"
 
         self.seed = 0
         self.resume = None
