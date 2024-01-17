@@ -34,9 +34,9 @@ class ASDFTrainer(object):
         self.resolution = 100
 
         self.batch_size = 1600
-        self.epochs = 40000
+        self.epochs = 40000000
         self.update_freq = 1
-        self.save_ckpt_freq = 1000
+        self.save_ckpt_freq = 10000
         self.point_cloud_size = 2048
         self.drop = 0.0
         self.attn_drop_rate = 0.0
