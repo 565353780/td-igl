@@ -28,7 +28,9 @@ class ASDFDataset(Dataset):
             if final_asdf_filename[-10:] != '_final.npy':
                 continue
 
-            self.asdf_file_list.append(final_asdf_dataset_folder_path + final_asdf_filename)
+            asdf_file_path = final_asdf_dataset_folder_path + final_asdf_filename
+
+            self.asdf_file_list.append(asdf_file_path)
 
         return True
 

@@ -224,7 +224,7 @@ class ASDFClassEncoder(nn.Module):
             None,
             None,
         )
-        for i in range(self.reso):
+        for _ in range(self.reso):
             if coord1 is None:
                 x = self.transformer.drop(cond + position_embeddings[:, :1, :])
                 for block in self.transformer.blocks[:12]:

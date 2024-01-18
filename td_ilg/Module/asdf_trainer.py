@@ -36,7 +36,7 @@ class ASDFTrainer(object):
         self.batch_size = 1600
         self.epochs = 40000000
         self.update_freq = 1
-        self.save_ckpt_freq = 10000
+        self.save_ckpt_freq = 4000
         self.point_cloud_size = 2048
         self.drop = 0.0
         self.attn_drop_rate = 0.0
@@ -83,7 +83,7 @@ class ASDFTrainer(object):
         self.dist_url = "env://"
 
         current_time = getCurrentTime()
-        current_time = "20240117_21:02:52"
+        current_time = "v3"
         self.output_dir = "./output/" + current_time + "/"
         self.log_dir = "./logs/" + current_time + "/"
         return
