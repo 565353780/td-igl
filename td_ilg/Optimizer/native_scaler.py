@@ -21,6 +21,9 @@ class NativeScalerWithGradNormCount:
     ):
         self._scaler.scale(loss).backward(create_graph=create_graph)
 
+        for params in parameters:
+            params.grad[torch.isnan(params.grad)] = 0.0
+
         if update_grad:
             if clip_grad is not None:
                 assert parameters is not None

@@ -35,7 +35,7 @@ class ASDFAutoEncoderTrainer(object):
     def __init__(self) -> None:
         self.batch_size = 1
         self.epochs = 40000
-        self.update_freq = 1
+        self.update_freq = 16
         self.save_ckpt_freq = 1
         self.drop = 0.0
         self.attn_drop_rate = 0.0
@@ -44,17 +44,17 @@ class ASDFAutoEncoderTrainer(object):
         self.model_ema = False
 
         self.opt = "adamw"
-        self.lr = 1e-3
+        self.lr = 1e-4
         self.warmup_lr = 1e-6
         self.min_lr = 1e-6
         self.weight_decay = 0.05
         self.weight_decay_end = None
         self.opt_eps = 1e-8
         self.opt_betas = None
-        self.clip_grad = None
+        self.clip_grad = 0
         self.momentum = 0.9
         self.layer_decay = 1.0
-        self.warmup_epochs = 40
+        self.warmup_epochs = 1
         self.warmup_steps = -1
 
         self.points_dataset_folder_path = (
@@ -110,7 +110,6 @@ class ASDFAutoEncoderTrainer(object):
     def train_one_epoch(
         self,
         model: torch.nn.Module,
-        criterion: torch.nn.Module,
         data_loader: Iterable,
         optimizer: torch.optim.Optimizer,
         epoch: int,
@@ -131,7 +130,7 @@ class ASDFAutoEncoderTrainer(object):
             "min_lr", SmoothedValue(window_size=1, fmt="{value:.6f}")
         )
         header = "Epoch: [{}]".format(epoch)
-        print_freq = 10
+        print_freq = 1
 
         if loss_scaler is None:
             model.zero_grad()
@@ -188,7 +187,7 @@ class ASDFAutoEncoderTrainer(object):
                 is_second_order = (
                     hasattr(optimizer, "is_second_order") and optimizer.is_second_order
                 )
-                loss /= update_freq
+                loss = loss / update_freq
                 grad_norm = loss_scaler(
                     loss,
                     optimizer,
@@ -251,8 +250,6 @@ class ASDFAutoEncoderTrainer(object):
 
     @torch.no_grad()
     def evaluate(self, data_loader, model):
-        criterion = torch.nn.NLLLoss()
-
         metric_logger = MetricLogger(delimiter="  ")
         header = "Test:"
 
@@ -360,7 +357,7 @@ class ASDFAutoEncoderTrainer(object):
             data_loader_val = None
 
         model = ASDFAutoEncoder(
-            asdf_channel=40, sh_2d_degree=3, sh_3d_degree=6, hidden_dim=128
+            asdf_channel=40, sh_2d_degree=3, sh_3d_degree=6, hidden_dim=128, dtype=torch.float32, device=self.device, sample_direction_num=200, direction_upscale=4
         )
 
         model.to(self.device)
@@ -448,9 +445,6 @@ class ASDFAutoEncoderTrainer(object):
             % (max(wd_schedule_values), min(wd_schedule_values))
         )
 
-        criterion = torch.nn.NLLLoss()
-        print("criterion = %s" % str(criterion))
-
         auto_load_model(
             args=self,
             model=model,
@@ -469,7 +463,6 @@ class ASDFAutoEncoderTrainer(object):
 
             train_stats = self.train_one_epoch(
                 model,
-                criterion,
                 data_loader_train,
                 optimizer,
                 epoch,

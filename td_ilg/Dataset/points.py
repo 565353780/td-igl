@@ -38,7 +38,7 @@ class PointsDataset(Dataset):
 
     def __getitem__(self, idx):
         points_file_path = self.points_file_list[idx]
-        points = np.load(points_file_path, allow_pickle=True).item()
+        points = np.load(points_file_path, allow_pickle=True)
         shuffle_points = np.random.permutation(points)
 
         return torch.from_numpy(shuffle_points).type(torch.float32)
