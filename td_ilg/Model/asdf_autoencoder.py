@@ -27,6 +27,11 @@ class ASDFAutoEncoder(nn.Module):
         )
         return
 
+    def encodeASDF(
+        self, points: torch.Tensor, idxs: Union[np.ndarray, torch.Tensor, None] = None
+    ) -> torch.Tensor:
+        return self.asdf_encoder(points, idxs)
+
     def decodeASDF(self, asdf_params: torch.Tensor) -> torch.Tensor:
         self.asdf_model.loadTorchParams(asdf_params)
         return self.asdf_model.forwardASDF(self.rad_density)
@@ -34,8 +39,9 @@ class ASDFAutoEncoder(nn.Module):
     def forward(
         self, points: torch.Tensor, idxs: Union[np.ndarray, torch.Tensor, None] = None
     ) -> torch.Tensor:
+        # TODO: allow multi batch for ASDFModel later for faster training speed
         assert points.shape[0] == 1
 
-        asdf_params = self.asdf_encoder(points, idxs)[0]
-        asdf_points = self.decodeASDF(asdf_params).unsqueeze(0)
+        asdf_params = self.encodeASDF(points, idxs)
+        asdf_points = self.decodeASDF(asdf_params[0]).unsqueeze(0)
         return asdf_points
