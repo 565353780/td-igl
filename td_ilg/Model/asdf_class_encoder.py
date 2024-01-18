@@ -442,19 +442,21 @@ class ASDFClassEncoder(nn.Module):
                 latent = ix
 
         # return coord1, coord2, coord3, coordt1, coordt2, coordt3, latent
+        coords = torch.cat(
+            [
+                coord1.unsqueeze(-1),
+                coord2.unsqueeze(-1),
+                coord3.unsqueeze(-1),
+                coordt1.unsqueeze(-1),
+                coordt2.unsqueeze(-1),
+                coordt3.unsqueeze(-1),
+            ],
+            dim=-1,
+        )
+
         return torch.cat(
             [
-                torch.cat(
-                    [
-                        coord1.unsqueeze(-1),
-                        coord2.unsqueeze(-1),
-                        coord3.unsqueeze(-1),
-                        coordt1.unsqueeze(-1),
-                        coordt2.unsqueeze(-1),
-                        coordt3.unsqueeze(-1),
-                    ],
-                    dim=-1,
-                ),
+                coords / 128.0 - 1.0,
                 latent,
             ],
             dim=-1,
@@ -463,15 +465,3 @@ class ASDFClassEncoder(nn.Module):
     @torch.jit.ignore
     def no_weight_decay(self):
         return {"pos_emb", "tpos_emb", "xyz_emb"}
-
-
-def class_encoder_55_512_1024_24_K1024():
-    return ClassEncoder(
-        ninp=1024,
-        nhead=16,
-        nlayers=24,
-        nclasses=55,
-        coord_vocab_size=256,
-        latent_vocab_size=1024,
-        reso=512,
-    )
