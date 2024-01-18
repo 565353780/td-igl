@@ -205,7 +205,6 @@ class ClassEncoder(nn.Module):
                 z_token_embeddings = self.z_tok_emb(coord3)  # B x S x C
                 latent_token_embeddings = self.latent_tok_emb(latent)  # B x S x C
                 print("latent_token_embeddings:", latent_token_embeddings.shape)
-                exit()
 
                 token_embeddings = torch.cat(
                     [
@@ -221,7 +220,6 @@ class ClassEncoder(nn.Module):
                     token_embeddings
                     + position_embeddings[:, : token_embeddings.shape[1], :]
                 )  # B x S x C
-                # print(embeddings.shape)
 
                 x = self.transformer.drop(embeddings)
                 for block in self.transformer.blocks[:12]:

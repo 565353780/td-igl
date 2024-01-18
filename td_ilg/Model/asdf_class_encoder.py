@@ -137,6 +137,7 @@ class ASDFClassEncoder(nn.Module):
             + y_token_embeddings
             + z_token_embeddings
             + position_embeddings
+            + tposition_embeddings
         )
 
         for block in self.transformer.blocks[20:24]:
@@ -174,7 +175,7 @@ class ASDFClassEncoder(nn.Module):
             + tposition_embeddings
         )
 
-        for block in self.transformer.blocks[24:28]:
+        for block in self.transformer.blocks[28:32]:
             x = block(x)
         tz_logits = (
             F.log_softmax(self.tz_head(self.ln_tz(x)), dim=-1)
@@ -193,7 +194,7 @@ class ASDFClassEncoder(nn.Module):
             + tposition_embeddings
         )
 
-        for block in self.transformer.blocks[28:]:
+        for block in self.transformer.blocks[32:36]:
             x = block(x)
         latent_logits = self.latent_head(self.ln_latent(x))
 
@@ -211,9 +212,18 @@ class ASDFClassEncoder(nn.Module):
     def sample(self, cond):
         cond = cond[:, None]
 
-        position_embeddings = self.pos_emb + self.tpos_emb
+        position_embeddings = self.pos_emb
+        tposition_embeddings = self.tpos_emb
 
-        coord1, coord2, coord3, latent = None, None, None, None
+        coord1, coord2, coord3, coordt1, coordt2, coordt3, latent = (
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+        )
         for i in range(self.reso):
             if coord1 is None:
                 x = self.transformer.drop(cond + position_embeddings[:, :1, :])
@@ -251,34 +261,91 @@ class ASDFClassEncoder(nn.Module):
                     + y_token_embeddings
                     + z_token_embeddings
                     + position_embeddings[:, :1, :]
+                    + tposition_embeddings[:, :1, :]
                 )
-                for block in self.transformer.blocks[20:]:
+                for block in self.transformer.blocks[20:24]:
+                    x = block(x)  # B x S x C
+                coordt1_logits = self.tx_head(self.ln_tx(x))
+                ix = sample(coordt1_logits)
+                coordt1 = ix
+                tx_token_embeddings = self.tx_tok_emb(coordt1)
+
+                x = (
+                    x
+                    + x_token_embeddings
+                    + y_token_embeddings
+                    + z_token_embeddings
+                    + tx_token_embeddings
+                    + position_embeddings[:, :1, :]
+                    + tposition_embeddings[:, :1, :]
+                )
+                for block in self.transformer.blocks[24:28]:
+                    x = block(x)  # B x S x C
+                coordt2_logits = self.ty_head(self.ln_ty(x))
+                ix = sample(coordt2_logits)
+                coordt2 = ix
+                ty_token_embeddings = self.ty_tok_emb(coordt2)
+
+                x = (
+                    x
+                    + x_token_embeddings
+                    + y_token_embeddings
+                    + z_token_embeddings
+                    + tx_token_embeddings
+                    + ty_token_embeddings
+                    + position_embeddings[:, :1, :]
+                    + tposition_embeddings[:, :1, :]
+                )
+                for block in self.transformer.blocks[28:32]:
+                    x = block(x)  # B x S x C
+                coordt3_logits = self.tz_head(self.ln_tz(x))
+                ix = sample(coordt3_logits)
+                coordt3 = ix
+                tz_token_embeddings = self.tz_tok_emb(coordt3)
+
+                x = (
+                    x
+                    + x_token_embeddings
+                    + y_token_embeddings
+                    + z_token_embeddings
+                    + tx_token_embeddings
+                    + ty_token_embeddings
+                    + tz_token_embeddings
+                    + position_embeddings[:, :1, :]
+                    + tposition_embeddings[:, :1, :]
+                )
+                for block in self.transformer.blocks[32:36]:
                     x = block(x)  # B x S x C
                 latent_logits = self.latent_head(self.ln_latent(x))
-                ix = sample(latent_logits)
-                latent = ix
+                latent = latent_logits
 
             else:
                 x_token_embeddings = self.x_tok_emb(coord1)  # B x S x C
                 y_token_embeddings = self.y_tok_emb(coord2)  # B x S x C
                 z_token_embeddings = self.z_tok_emb(coord3)  # B x S x C
-                latent_token_embeddings = self.latent_tok_emb(latent)  # B x S x C
+                tx_token_embeddings = self.x_tok_emb(coordt1)  # B x S x C
+                ty_token_embeddings = self.y_tok_emb(coordt2)  # B x S x C
+                tz_token_embeddings = self.z_tok_emb(coordt3)  # B x S x C
+                latent_features = self.latent_encoder(latent)
 
                 token_embeddings = torch.cat(
                     [
                         cond,
-                        latent_token_embeddings
+                        latent_features
                         + x_token_embeddings
                         + y_token_embeddings
-                        + z_token_embeddings,
+                        + z_token_embeddings
+                        + tx_token_embeddings
+                        + ty_token_embeddings
+                        + tz_token_embeddings,
                     ],
                     dim=1,
                 )  # B x (1+S) x C
+
                 embeddings = (
                     token_embeddings
                     + position_embeddings[:, : token_embeddings.shape[1], :]
                 )  # B x S x C
-                # print(embeddings.shape)
 
                 x = self.transformer.drop(embeddings)
                 for block in self.transformer.blocks[:12]:
@@ -315,13 +382,83 @@ class ASDFClassEncoder(nn.Module):
                     + y_token_embeddings
                     + z_token_embeddings
                     + position_embeddings[:, : x.shape[1], :]
+                    + tposition_embeddings[:, : x.shape[1], :]
                 )
-                for block in self.transformer.blocks[20:]:
+                for block in self.transformer.blocks[20:24]:
                     x = block(x)  # B x S x C
-                latent_logits = self.latent_head(self.ln_latent(x))
-                ix = sample(latent_logits)
-                latent = torch.cat((latent, ix), dim=1)
-        return coord1, coord2, coord3, latent
+                coordt1_logits = self.tx_head(self.ln_tx(x))
+                ix = sample(coordt1_logits)
+                coordt1 = torch.cat((coordt1, ix), dim=1)
+                tx_token_embeddings = self.tx_tok_emb(coordt1)
+
+                x = (
+                    x
+                    + x_token_embeddings
+                    + y_token_embeddings
+                    + z_token_embeddings
+                    + tx_token_embeddings
+                    + position_embeddings[:, : x.shape[1], :]
+                    + tposition_embeddings[:, : x.shape[1], :]
+                )
+                for block in self.transformer.blocks[24:28]:
+                    x = block(x)  # B x S x C
+                coordt2_logits = self.ty_head(self.ln_ty(x))
+                ix = sample(coordt2_logits)
+                coordt2 = torch.cat((coordt2, ix), dim=1)
+                ty_token_embeddings = self.ty_tok_emb(coordt2)
+
+                x = (
+                    x
+                    + x_token_embeddings
+                    + y_token_embeddings
+                    + z_token_embeddings
+                    + tx_token_embeddings
+                    + ty_token_embeddings
+                    + position_embeddings[:, : x.shape[1], :]
+                    + tposition_embeddings[:, : x.shape[1], :]
+                )
+                for block in self.transformer.blocks[28:32]:
+                    x = block(x)  # B x S x C
+                coordt3_logits = self.tz_head(self.ln_tz(x))
+                ix = sample(coordt3_logits)
+                coordt3 = torch.cat((coordt3, ix), dim=1)
+                tz_token_embeddings = self.tz_tok_emb(coordt3)
+
+                x = (
+                    x
+                    + x_token_embeddings
+                    + y_token_embeddings
+                    + z_token_embeddings
+                    + tx_token_embeddings
+                    + ty_token_embeddings
+                    + tz_token_embeddings
+                    + position_embeddings[:, : x.shape[1], :]
+                    + tposition_embeddings[:, : x.shape[1], :]
+                )
+                for block in self.transformer.blocks[32:36]:
+                    x = block(x)  # B x S x C
+                ix = self.latent_head(self.ln_latent(x))
+                # latent = torch.cat((latent, ix), dim=1)
+                latent = ix
+
+        # return coord1, coord2, coord3, coordt1, coordt2, coordt3, latent
+        return torch.cat(
+            [
+                torch.cat(
+                    [
+                        coord1.unsqueeze(-1),
+                        coord2.unsqueeze(-1),
+                        coord3.unsqueeze(-1),
+                        coordt1.unsqueeze(-1),
+                        coordt2.unsqueeze(-1),
+                        coordt3.unsqueeze(-1),
+                    ],
+                    dim=-1,
+                ),
+                latent,
+            ],
+            dim=-1,
+        )
 
     @torch.jit.ignore
     def no_weight_decay(self):

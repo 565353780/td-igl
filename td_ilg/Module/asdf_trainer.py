@@ -58,13 +58,15 @@ class ASDFTrainer(object):
         self.warmup_epochs = 40
         self.warmup_steps = -1
 
-        self.asdf_dataset_folder_path = "/home/chli/Nutstore Files/paper-materials-ASDF/Dataset/ASDF/asdf_final/"
+        self.asdf_dataset_folder_path = (
+            "/home/chli/Nutstore Files/paper-materials-ASDF/Dataset/ASDF/asdf_final/"
+        )
         self.device = "cuda"
 
         self.seed = 0
-        self.resume = None
-        self.auto_resume = False
-        self.no_auto_resume = True
+        self.resume = []
+        self.auto_resume = True
+        # self.no_auto_resume = True
 
         self.save_ckpt = True
         self.no_save_ckpt = False
@@ -81,8 +83,9 @@ class ASDFTrainer(object):
         self.dist_url = "env://"
 
         current_time = getCurrentTime()
-        self.output_dir = "./output/"+ current_time + '/'
-        self.log_dir = "./logs/" + current_time + '/'
+        current_time = "20240117_21:02:52"
+        self.output_dir = "./output/" + current_time + "/"
+        self.log_dir = "./logs/" + current_time + "/"
         return
 
     def train_batch(self, model, positions, params, categories, criterion):
