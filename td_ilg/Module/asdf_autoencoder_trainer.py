@@ -10,10 +10,11 @@ import torch.backends.cudnn as cudnn
 from timm.utils import ModelEma
 from typing import Iterable, Optional
 
+from a_sdf.Loss.chamfer_distance import chamferDistance
+
 from td_ilg.Data.smoothed_value import SmoothedValue
-from td_ilg.Dataset.datasets import build_shape_surface_occupancy_dataset
-from td_ilg.Model.class_encoder import ClassEncoder
-from td_ilg.Model.VQVAE.auto_encoder import AutoEncoder
+from td_ilg.Dataset.points import PointsDataset
+from td_ilg.Model.asdf_autoencoder import ASDFAutoEncoder
 from td_ilg.Method.io import save_model, auto_load_model
 from td_ilg.Method.distributed import (
     init_distributed_mode,
@@ -21,7 +22,7 @@ from td_ilg.Method.distributed import (
     get_world_size,
     is_main_process,
 )
-from td_ilg.Method.sort import sortCenters
+from td_ilg.Method.time import getCurrentTime
 from td_ilg.Optimizer.opt import create_optimizer
 from td_ilg.Optimizer.layer_decay_value_assigner import LayerDecayValueAssigner
 from td_ilg.Optimizer.native_scaler import NativeScalerWithGradNormCount as NativeScaler
@@ -30,44 +31,41 @@ from td_ilg.Module.Logger.metric import MetricLogger
 from td_ilg.Module.Logger.tensorboard import TensorboardLogger
 
 
-class Trainer(object):
+class ASDFAutoEncoderTrainer(object):
     def __init__(self) -> None:
-        self.resolution = 12
-
-        self.batch_size = 2
-        self.epochs = 400
+        self.batch_size = 1
+        self.epochs = 40000
         self.update_freq = 1
-        self.save_ckpt_freq = 20
-        self.point_cloud_size = 2048
+        self.save_ckpt_freq = 1
         self.drop = 0.0
         self.attn_drop_rate = 0.0
         self.drop_path = 0.1
-        self.disable_eval = False
+        self.disable_eval = True
         self.model_ema = False
 
         self.opt = "adamw"
+        self.lr = 1e-3
+        self.warmup_lr = 1e-6
+        self.min_lr = 1e-6
+        self.weight_decay = 0.05
+        self.weight_decay_end = None
         self.opt_eps = 1e-8
         self.opt_betas = None
         self.clip_grad = None
         self.momentum = 0.9
-        self.weight_decay = 0.05
-        self.weight_decay_end = None
-        self.lr = 1e-3
         self.layer_decay = 1.0
-        self.warmup_lr = 1e-6
-        self.min_lr = 1e-6
         self.warmup_epochs = 40
         self.warmup_steps = -1
 
-        self.data_path = "./test/"
-        self.output_dir = "./output/"
-        self.log_dir = "./logs/"
-        self.device = "cpu"
+        self.points_dataset_folder_path = (
+            "/home/chli/chLi/Dataset/ShapeNet/points/4000/"
+        )
+        self.device = "cuda"
 
         self.seed = 0
-        self.resume = None
-        self.auto_resume = False
-        self.no_auto_resume = True
+        self.resume = []
+        self.auto_resume = True
+        # self.no_auto_resume = True
 
         self.save_ckpt = True
         self.no_save_ckpt = False
@@ -82,49 +80,39 @@ class Trainer(object):
         self.local_rank = -1
         self.dist_on_itp = False
         self.dist_url = "env://"
+
+        current_time = getCurrentTime()
+        # current_time = "v3"
+        self.output_dir = "./output/" + current_time + "/"
+        self.log_dir = "./logs/" + current_time + "/"
         return
 
-    def train_batch(self, model, vqvae, surface, categories, criterion):
-        with torch.no_grad():
-            _, _, centers_quantized, _, _, encodings = vqvae.encode(surface)
-            print("surface:", surface.shape)
-            print("centers_quantized:", centers_quantized.shape)
-            print("encodings:", encodings.shape)
+    def train_batch(self, model, points: torch.Tensor):
+        asdf_points = model(points)
 
-        centers_quantized, encodings = sortCenters(centers_quantized, encodings)
+        fit_dists2, coverage_dists2 = chamferDistance(
+            asdf_points, points, self.device == "cpu"
+        )[:2]
 
-        x_logits, y_logits, z_logits, latent_logits = model(
-            centers_quantized, encodings, categories
-        )
-        print("x_logits:", x_logits.shape)
-        print("latent_logits:", latent_logits.shape)
+        fit_dists = torch.mean(torch.sqrt(fit_dists2) + 1e-6)
+        coverage_dists = torch.mean(torch.sqrt(coverage_dists2) + 1e-6)
 
-        loss_x = criterion(x_logits, centers_quantized[:, :, 0])
-        loss_y = criterion(y_logits, centers_quantized[:, :, 1])
-        loss_z = criterion(z_logits, centers_quantized[:, :, 2])
-        loss_latent = criterion(latent_logits, encodings)
-        loss = loss_x + loss_y + loss_z + loss_latent
-        print("loss_x:", loss_x.shape)
-        print("loss_latent:", loss_latent.shape)
-        print("loss:", loss)
-        exit()
+        loss_fit = torch.mean(fit_dists)
+        loss_coverage = torch.mean(coverage_dists)
+        loss = loss_fit + loss_coverage
 
         return (
             loss,
-            loss_x.item(),
-            loss_y.item(),
-            loss_z.item(),
-            loss_latent.item(),
+            loss_fit.item(),
+            loss_coverage.item(),
         )
 
     def train_one_epoch(
         self,
         model: torch.nn.Module,
         criterion: torch.nn.Module,
-        vqvae: torch.nn.Module,
         data_loader: Iterable,
         optimizer: torch.optim.Optimizer,
-        device: torch.device,
         epoch: int,
         loss_scaler,
         max_norm: float = 0,
@@ -151,7 +139,7 @@ class Trainer(object):
         else:
             optimizer.zero_grad()
 
-        for data_iter_step, (_, _, surface, categories) in enumerate(
+        for data_iter_step, points in enumerate(
             metric_logger.log_every(data_loader, print_freq, header)
         ):
             step = data_iter_step // update_freq
@@ -164,7 +152,7 @@ class Trainer(object):
                 or wd_schedule_values is not None
                 and data_iter_step % update_freq == 0
             ):
-                for i, param_group in enumerate(optimizer.param_groups):
+                for param_group in optimizer.param_groups:
                     if lr_schedule_values is not None:
                         param_group["lr"] = (
                             lr_schedule_values[it] * param_group["lr_scale"]
@@ -175,16 +163,17 @@ class Trainer(object):
                     ):
                         param_group["weight_decay"] = wd_schedule_values[it]
 
-            surface = surface.to(device, non_blocking=True)
-            categories = categories.to(device, non_blocking=True)
+            points = points.to(self.device, non_blocking=True)
 
             if loss_scaler is None:
                 raise NotImplementedError
             else:
                 with torch.cuda.amp.autocast():
-                    loss, loss_x, loss_y, loss_z, loss_latent = self.train_batch(
-                        model, vqvae, surface, categories, criterion
-                    )
+                    (
+                        loss,
+                        loss_fit,
+                        loss_coverage,
+                    ) = self.train_batch(model, points)
 
             loss_value = loss.item()
 
@@ -224,10 +213,8 @@ class Trainer(object):
             metric_logger.update(loss=loss_value)
             if loss_scale_value:
                 metric_logger.update(loss_scale=loss_scale_value)
-            metric_logger.update(loss_x=loss_x)
-            metric_logger.update(loss_y=loss_y)
-            metric_logger.update(loss_z=loss_z)
-            metric_logger.update(loss_latent=loss_latent)
+            metric_logger.update(loss_fit=loss_fit)
+            metric_logger.update(loss_coverage=loss_coverage)
 
             min_lr = 10.0
             max_lr = 0.0
@@ -245,6 +232,8 @@ class Trainer(object):
             metric_logger.update(grad_norm=grad_norm)
 
             if log_writer is not None:
+                log_writer.update(loss_fit=loss_fit, head="loss")
+                log_writer.update(loss_coverage=loss_coverage, head="loss")
                 log_writer.update(loss=loss_value, head="loss")
                 if loss_scale_value:
                     log_writer.update(loss_scale=loss_scale_value, head="opt")
@@ -261,7 +250,7 @@ class Trainer(object):
         return {k: meter.global_avg for k, meter in metric_logger.meters.items()}
 
     @torch.no_grad()
-    def evaluate(self, data_loader, model, vqvae, device):
+    def evaluate(self, data_loader, model):
         criterion = torch.nn.NLLLoss()
 
         metric_logger = MetricLogger(delimiter="  ")
@@ -270,34 +259,27 @@ class Trainer(object):
         # switch to evaluation mode
         model.eval()
 
-        for batch in metric_logger.log_every(data_loader, 1000, header):
-            _, _, surface, categories = batch
-            surface = surface.to(device, non_blocking=True)
-            categories = categories.to(device, non_blocking=True)
+        for points in metric_logger.log_every(data_loader, 1000, header):
+            points = points.to(self.device, non_blocking=True)
 
             # compute output
             with torch.cuda.amp.autocast():
-                with torch.no_grad():
-                    _, _, centers_quantized, _, _, encodings = vqvae.encode(surface)
+                asdf_points = model(points)
 
-                centers_quantized, encodings = sortCenters(centers_quantized, encodings)
+                fit_dists2, coverage_dists2 = chamferDistance(
+                    asdf_points, points, self.device == "cpu"
+                )[:2]
 
-                x_logits, y_logits, z_logits, latent_logits = model(
-                    centers_quantized, encodings, categories
-                )
+                fit_dists = torch.mean(torch.sqrt(fit_dists2) + 1e-6)
+                coverage_dists = torch.mean(torch.sqrt(coverage_dists2) + 1e-6)
 
-                loss_x = criterion(x_logits, centers_quantized[:, :, 0])
-                loss_y = criterion(y_logits, centers_quantized[:, :, 1])
-                loss_z = criterion(z_logits, centers_quantized[:, :, 2])
-
-                loss_latent = criterion(latent_logits, encodings)
-                loss = loss_x + loss_y + loss_z + loss_latent
+                loss_fit = torch.mean(fit_dists)
+                loss_coverage = torch.mean(coverage_dists)
+                loss = loss_fit + loss_coverage
 
             metric_logger.update(loss=loss.item())
-            metric_logger.update(loss_x=loss_x.item())
-            metric_logger.update(loss_y=loss_y.item())
-            metric_logger.update(loss_z=loss_z.item())
-            metric_logger.update(loss_latent=loss_latent.item())
+            metric_logger.update(loss_fit=loss_fit.item())
+            metric_logger.update(loss_coverage=loss_coverage.item())
         # gather the stats from all processes
         metric_logger.synchronize_between_processes()
         print("* loss {losses.global_avg:.3f} ".format(losses=metric_logger.loss))
@@ -315,11 +297,15 @@ class Trainer(object):
 
         cudnn.benchmark = True
 
-        dataset_train = build_shape_surface_occupancy_dataset("train", args=self)
+        dataset_train = PointsDataset(self.points_dataset_folder_path)
+
+        if len(dataset_train) < self.batch_size:
+            self.batch_size = len(dataset_train)
+
         if self.disable_eval:
             dataset_val = None
         else:
-            dataset_val = build_shape_surface_occupancy_dataset("val", args=self)
+            dataset_val = PointsDataset(self.points_dataset_folder_path)
 
         if True:  # self.distributed:
             num_tasks = get_world_size()
@@ -373,35 +359,11 @@ class Trainer(object):
         else:
             data_loader_val = None
 
-        """
-        model = ClassEncoder(
-            ninp=1024,
-            nhead=16,
-            nlayers=24,
-            nclasses=55,
-            coord_vocab_size=256,
-            latent_vocab_size=1024,
-            reso=128,
-        )
-        """
-        model = ClassEncoder(
-            ninp=16,
-            nhead=2,
-            nlayers=24,
-            nclasses=55,
-            coord_vocab_size=256,
-            latent_vocab_size=1024,
-            reso=self.resolution,
+        model = ASDFAutoEncoder(
+            asdf_channel=40, sh_2d_degree=3, sh_3d_degree=6, hidden_dim=128
         )
 
         model.to(self.device)
-
-        # vqvae = AutoEncoder(N=128, K=512, M=2048)
-        vqvae = AutoEncoder(N=self.resolution, K=24, M=2048)
-        vqvae.eval()
-        # FIXME: load auto encoder
-        # vqvae.load_state_dict(torch.load(self.vqvae_pth)["model"])
-        vqvae.to(self.device)
 
         model_ema = None
         if self.model_ema:
@@ -508,10 +470,8 @@ class Trainer(object):
             train_stats = self.train_one_epoch(
                 model,
                 criterion,
-                vqvae,
                 data_loader_train,
                 optimizer,
-                self.device,
                 epoch,
                 loss_scaler,
                 self.clip_grad,
@@ -538,7 +498,7 @@ class Trainer(object):
             if data_loader_val is not None and (
                 epoch % 10 == 0 or epoch + 1 == self.epochs
             ):
-                test_stats = self.evaluate(data_loader_val, model, vqvae, self.device)
+                test_stats = self.evaluate(data_loader_val, model)
 
                 if self.output_dir and self.save_ckpt:
                     save_model(

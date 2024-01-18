@@ -49,7 +49,6 @@ class AutoEncoder(nn.Module):
 
         z_q_x = z_q_x_st
 
-        z_q_x_st = z_q_x_st
         B, N, C = z_q_x_st.shape
 
         logits, sigma = self.decoder(z_q_x_st, centers, points)

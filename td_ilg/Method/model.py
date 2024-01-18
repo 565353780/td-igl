@@ -11,14 +11,15 @@ def trunc_normal_(tensor, mean=0.0, std=1.0):
 def sample(logits, top_k=100, top_p=0.85):
     temperature = 1.0
     logits = logits[:, -1, :] / temperature
+    # FIXME: current select the best position directly for now
+    return torch.sort(logits, descending=True)[1][0, 0].reshape(1, 1)
+
     probs = F.softmax(logits, dim=-1)
 
-    top_k = top_k
     topk, indices = torch.topk(probs, k=top_k, dim=-1)
     probs = torch.zeros(*probs.shape).to(probs.device).scatter_(1, indices, topk)
 
     # top-p
-    top_p = top_p
     sorted_probs, sorted_indices = torch.sort(probs, descending=True)
     cumulative_probs = torch.cumsum(sorted_probs, dim=-1)
 

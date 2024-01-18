@@ -1,5 +1,6 @@
 import torch
 import numpy as np
+from tqdm import tqdm
 
 from data_convert.Method.data import toData
 from a_sdf.Model.asdf_model import ASDFModel
@@ -16,6 +17,45 @@ class ASDFSampler(object):
         self.device = "cpu"
         self.resolution = 100
         return
+
+    def toInitialASDFModel(self) -> ASDFModel:
+        max_sh_3d_degree = 4
+        max_sh_2d_degree = 4
+        use_inv = True
+        method_name = "torch"
+        dtype = torch.float32
+        device = "cpu"
+        epoch = 10000
+        lr = 5e-3
+        weight_decay = 1e-4
+        factor = 0.8
+        patience = 10
+        min_lr = lr * 1e-1
+        render = False
+        save_folder_path = "./output/test1/"
+        sample_direction_num = 200
+        direction_upscale = 4
+
+        asdf_model = ASDFModel(
+            max_sh_3d_degree,
+            max_sh_2d_degree,
+            use_inv,
+            method_name,
+            dtype,
+            device,
+            epoch,
+            lr,
+            weight_decay,
+            factor,
+            patience,
+            min_lr,
+            render,
+            save_folder_path,
+            sample_direction_num,
+            direction_upscale,
+        )
+
+        return asdf_model
 
     @torch.no_grad()
     def sample(self) -> bool:
@@ -45,79 +85,27 @@ class ASDFSampler(object):
         # model.load_state_dict(checkpoint["model"])
         model.eval()
 
-        id = 0
-        categories = torch.Tensor([id]).long()
+        asdf_list = []
 
-        print("start model cond")
-        cond = model.class_enc(categories)
-        print("cond:")
-        print(cond.shape)
-
-        asdf_params = model.sample(cond).cpu().numpy()
-
-        print(asdf_params.shape)
-
-        max_sh_3d_degree = 4
-        max_sh_2d_degree = 4
-        use_inv = True
-        method_name = "torch"
-        dtype = torch.float32
-        device = "cpu"
-        epoch = 10000
-        lr = 5e-3
-        weight_decay = 1e-4
-        factor = 0.8
-        patience = 10
-        min_lr = lr * 1e-1
-        render = True
-        save_folder_path = "./output/test1/"
-        sample_direction_num = 200
-        direction_upscale = 4
+        for i in tqdm(range(1)):
+            categories = torch.Tensor([0]).long()
+            cond = model.class_enc(categories)
+            asdf_params = model.sample(cond).cpu().numpy()[0]
+            asdf_model = self.toInitialASDFModel()
+            asdf_model.loadParams(asdf_params)
+            asdf_list.append(asdf_model)
 
         rad_density = 100
-        cone_render_scale = 0.5
-        cone_color = [0, 1, 0]
 
-        asdf_model = ASDFModel(
-            max_sh_3d_degree,
-            max_sh_2d_degree,
-            use_inv,
-            method_name,
-            dtype,
-            device,
-            epoch,
-            lr,
-            weight_decay,
-            factor,
-            patience,
-            min_lr,
-            render,
-            save_folder_path,
-            sample_direction_num,
-            direction_upscale,
-        )
-        asdf_model.loadParams(asdf_params[0])
-        asdf_model.renderDetectPoints(rad_density)
-        asdf_model.renderDetectMaskViewCones(rad_density, cone_render_scale, cone_color)
+        points = []
 
-        cone_boundaries = []
-        cone_directions = []
-        cone_positions = []
-        cone_heights = []
-        sample_points_per_anchor = asdf_model.toAnchorDetectPointsList(rad_density)
-        for anchor_idx in range(asdf_model.anchorNum()):
-            mask_boundary_points = toData(
-                asdf_model.toAnchorDetectBoundaryPoints(anchor_idx, rad_density),
-                "numpy",
-            )
-            cone_boundaries.append(mask_boundary_points)
-            direction = toData(asdf_model.toAnchorDirection(anchor_idx), "numpy")
-            cone_directions.append(direction)
-            position = toData(asdf_model.toAnchorPositionParams(anchor_idx), "numpy")
-            cone_positions.append(position)
-            cone_height = toData(asdf_model.toAnchorHeightVector(anchor_idx), "numpy")
-            cone_heights.append(cone_height)
+        for i in range(len(asdf_list)):
+            # asdf_model.renderDetectPoints(rad_density)
+            # asdf_model.renderDetectMaskViewCones(rad_density, cone_render_scale, cone_color)
 
-        renderPoints(np.vstack(cone_boundaries), "cone_boundaries")
-        renderPoints(np.vstack(sample_points_per_anchor), "sample_points_per_anchor")
+            detect_points = toData(asdf_model.toDetectPoints(rad_density), "numpy")
+            detect_points += [0, 0, i * 40]
+            points.append(detect_points)
+
+        renderPoints(np.vstack(points), "asdf points")
         return True
