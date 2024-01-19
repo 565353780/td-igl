@@ -4,7 +4,6 @@ import numpy as np
 from tqdm import tqdm
 from torch import nn
 from torch.optim import AdamW
-from torch.optim.lr_scheduler import LambdaLR
 from torch.utils.data import DataLoader
 from transformers import optimization
 
@@ -27,16 +26,13 @@ class ASDFAutoEncoderTrainer(object):
         self.num_workers = 0
         self.lr = 1e-2
         self.weight_decay = 1e-10
-        self.decay_step = 100
-        self.lr_decay = 0.96
-        self.lowest_decay = 0.02
         self.step = 0
         self.eval_step = 0
         self.loss_min = float('inf')
         self.eval_loss_min = float('inf')
         self.log_folder_name = getCurrentTime()
         self.device = 'cpu'
-        self.points_dataset_folder_path = '/home/chli/chLi/Dataset/ShapeNet/points/4000/'
+        self.points_dataset_folder_path = '/home/chli/chLi/Dataset/ShapeNet/points/10000/'
         self.accumulation_steps = 64
 
         self.model = ASDFAutoEncoder(
@@ -63,11 +59,6 @@ class ASDFAutoEncoderTrainer(object):
         self.optimizer = AdamW(self.model.parameters(),
                                lr=self.lr,
                                weight_decay=self.weight_decay)
-        '''
-        def lr_lambda(e): return max(self.lr_decay **
-                                     (e / self.decay_step), self.lowest_decay)(e / self.decay_step), self.lowest_decay)
-        self.scheduler = LambdaLR(self.optimizer, lr_lambda)
-        '''
         self.scheduler = optimization.get_polynomial_decay_schedule_with_warmup(
             self.optimizer,
             num_warmup_steps=int(len(self.train_dataloader) / self.accumulation_steps),

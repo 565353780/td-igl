@@ -26,6 +26,10 @@ class PointsDataset(Dataset):
             if not os.path.exists(points_folder_path):
                 continue
 
+            # FIXME: only chair here
+            if class_foldername != "03001627":
+                continue
+
             points_filename_list = os.listdir(points_folder_path)
 
             for points_filename in tqdm(points_filename_list):
