@@ -23,7 +23,7 @@ class ASDFAutoEncoderTrainer(object):
     def __init__(self):
         self.batch_size = 1
         self.num_workers = 0
-        self.lr = 1e-3
+        self.lr = 1e-2
         self.weight_decay = 1e-10
         self.decay_step = 100
         self.lr_decay = 0.96
@@ -35,7 +35,7 @@ class ASDFAutoEncoderTrainer(object):
         self.log_folder_name = getCurrentTime()
         self.device = 'cuda'
         self.points_dataset_folder_path = '/home/chli/chLi/Dataset/ShapeNet/points/4000/'
-        self.accumulation_steps = 16
+        self.accumulation_steps = 1
 
         self.model = ASDFAutoEncoder(
             asdf_channel=40, sh_2d_degree=3, sh_3d_degree=6, hidden_dim=128, dtype=torch.float32, device=self.device, sample_direction_num=200, direction_upscale=4
@@ -149,12 +149,11 @@ class ASDFAutoEncoderTrainer(object):
 
         loss = loss / self.accumulation_steps
         loss.backward()
+        nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=1e5, norm_type=2)
+        for params in self.model.parameters():
+            params.grad[torch.isnan(params.grad)] = 0.0
 
         if self.step % self.accumulation_steps == 0:
-            nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=1e5, norm_type=2)
-            for params in self.model.parameters():
-                params.grad[torch.isnan(params.grad)] = 0.0
-
             self.optimizer.step()
 
             self.model.zero_grad()
