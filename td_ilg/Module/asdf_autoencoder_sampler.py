@@ -1,5 +1,6 @@
 import os
 import torch
+from math import sqrt, ceil
 from tqdm import tqdm
 from typing import Union
 
@@ -75,8 +76,10 @@ class ASDFAutoEncoderSampler(object):
     ) -> bool:
         self.model.eval()
 
-        object_dist_z = 2
+        object_dist = [2, 0, 2]
         mesh_translate = [1, 0, 0]
+
+        row_num = ceil(sqrt(len(mesh_file_path_list)))
 
         mesh_list = []
         asdf_pcd_list = []
@@ -101,7 +104,7 @@ class ASDFAutoEncoderSampler(object):
             asdf_points = toData(self.model(points), "numpy").reshape(-1, 3)
             pcd = getPointCloud(asdf_points)
 
-            translate = [0, 0, i * object_dist_z]
+            translate = [int(i / row_num) * object_dist[0], 0 * object_dist[1], (i % row_num) * object_dist[2]]
 
             o3d_mesh = mesh.toO3DMesh()
             o3d_mesh.translate(translate)
