@@ -124,50 +124,50 @@ class ASDFEncoder(nn.Module):
         row, col = knn(pos, pos[idx], ceil(N / self.asdf_channel), batch, batch[idx])
         edge_index = torch.stack([col, row], dim=0)
 
-        x = self.conv(pos, pos[idx], edge_index, self.basis)
+        latent_feature = self.conv(pos, pos[idx], edge_index, self.basis)
         center = pos[idx]
 
-        x = x.view(B, -1, x.shape[-1])
+        latent_feature = latent_feature.view(B, -1, latent_feature.shape[-1])
         center = center.view(B, -1, 3)
 
         center_embeddings = embed(center, self.basis)
         center_embeddings = self.embed(torch.cat([center, center_embeddings], dim=2))
 
-        x = self.transformer(x, center_embeddings)
+        xyz_feature = self.transformer(latent_feature, center_embeddings)
 
-        delta_xyz = self.xyz_head(self.ln_xyz(x))
+        delta_xyz = self.xyz_head(self.ln_xyz(xyz_feature))
 
         delta_xyz_embeddings = embed(delta_xyz, self.basis)
         delta_xyz_embeddings = self.embed(
             torch.cat([delta_xyz, delta_xyz_embeddings], dim=2)
         )
 
-        x = self.transformer(x, center_embeddings + delta_xyz_embeddings)
+        txyz_feature = self.transformer(latent_feature, center_embeddings + delta_xyz_embeddings)
 
-        delta_txyz = self.txyz_head(self.ln_txyz(x))
+        delta_txyz = self.txyz_head(self.ln_txyz(txyz_feature))
 
         delta_txyz_embeddings = embed(delta_txyz, self.basis)
         delta_txyz_embeddings = self.embed(
             torch.cat([delta_txyz, delta_txyz_embeddings], dim=2)
         )
 
-        x = self.transformer(
-            x, center_embeddings + delta_xyz_embeddings + delta_txyz_embeddings
+        sh2d_feature = self.transformer(
+            latent_feature, center_embeddings + delta_xyz_embeddings + delta_txyz_embeddings
         )
 
-        sh_2d = self.sh2d_head(self.ln_sh2d(x))
+        sh_2d = self.sh2d_head(self.ln_sh2d(sh2d_feature))
 
         sh2d_embeddings = self.sh2d_embed(sh_2d)
 
-        x = self.transformer(
-            x,
+        sh3d_feature = self.transformer(
+            latent_feature,
             center_embeddings
             + delta_xyz_embeddings
             + delta_txyz_embeddings
             + sh2d_embeddings,
         )
 
-        sh_3d = self.sh3d_head(self.ln_sh3d(x))
+        sh_3d = self.sh3d_head(self.ln_sh3d(sh3d_feature))
 
         return torch.cat(
             [center + delta_xyz, center + delta_txyz, sh_2d, sh_3d], dim=-1

@@ -2,6 +2,7 @@ import os
 import torch
 import numpy as np
 from tqdm import tqdm
+from random import sample
 from torch.utils.data import Dataset
 
 
@@ -11,6 +12,8 @@ class PointsDataset(Dataset):
         points_dataset_folder_path: str,
     ) -> None:
         self.points_file_list = []
+        self.min_points_percent = 0.1
+        self.max_points_percent = 1.0
 
         self.loadShapeNetDataset(points_dataset_folder_path)
         return
@@ -41,4 +44,8 @@ class PointsDataset(Dataset):
         points = np.load(points_file_path, allow_pickle=True)
         shuffle_points = np.random.permutation(points)
 
-        return torch.from_numpy(shuffle_points).type(torch.float32)
+        sample_point_num = np.random.randint(int(self.min_points_percent * points.shape[0]), int(self.max_points_percent * points.shape[0]))
+        random_idxs = np.array(sample(list(range(points.shape[0])), sample_point_num), dtype=int)
+        sample_points = points[random_idxs]
+
+        return torch.from_numpy(sample_points).type(torch.float32), torch.from_numpy(shuffle_points).type(torch.float32)

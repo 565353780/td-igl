@@ -37,7 +37,7 @@ class ASDFAutoEncoderTrainer(object):
         self.log_folder_name = getCurrentTime()
         self.device = 'cpu'
         self.points_dataset_folder_path = '/home/chli/chLi/Dataset/ShapeNet/points/4000/'
-        self.accumulation_steps = 1
+        self.accumulation_steps = 64
 
         self.model = ASDFAutoEncoder(
             asdf_channel=100, sh_2d_degree=3, sh_3d_degree=4, hidden_dim=256, dtype=torch.float32, device=self.device, sample_direction_num=400, direction_upscale=4
@@ -131,13 +131,13 @@ class ASDFAutoEncoderTrainer(object):
     def getLr(self) -> float:
         return self.optimizer.state_dict()["param_groups"][0]["lr"]
 
-    def trainStep(self, points):
+    def trainStep(self, sample_points, gt_points):
         self.model.train()
 
-        asdf_points = self.model(points)
+        asdf_points = self.model(sample_points)
 
         fit_dists2, coverage_dists2 = chamferDistance(
-            asdf_points, points, self.device == "cpu"
+            asdf_points, gt_points, self.device == "cpu"
         )[:2]
 
         fit_dists = torch.mean(torch.sqrt(fit_dists2) + 1e-6)
@@ -216,11 +216,12 @@ class ASDFAutoEncoderTrainer(object):
                   str(total_epoch) + "...")
             if print_progress:
                 pbar = tqdm(total=len(self.train_dataloader))
-            for points in self.train_dataloader:
+            for sample_points, gt_points in self.train_dataloader:
                 self.step += 1
 
-                points = points.to(self.device, non_blocking=True)
-                loss = self.trainStep(points)
+                sample_points = sample_points.to(self.device, non_blocking=True)
+                gt_points = gt_points.to(self.device, non_blocking=True)
+                loss = self.trainStep(sample_points, gt_points)
 
 
                 if print_progress:
