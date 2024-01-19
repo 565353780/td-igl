@@ -6,6 +6,7 @@ from torch import nn
 from torch.optim import AdamW
 from torch.optim.lr_scheduler import LambdaLR
 from torch.utils.data import DataLoader
+from transformers import optimization
 
 from a_sdf.Loss.chamfer_distance import chamferDistance
 from a_sdf.Method.path import createFileFolder, renameFile, removeFile
@@ -34,12 +35,12 @@ class ASDFAutoEncoderTrainer(object):
         self.loss_min = float('inf')
         self.eval_loss_min = float('inf')
         self.log_folder_name = getCurrentTime()
-        self.device = 'cuda'
+        self.device = 'cpu'
         self.points_dataset_folder_path = '/home/chli/chLi/Dataset/ShapeNet/points/4000/'
         self.accumulation_steps = 1
 
         self.model = ASDFAutoEncoder(
-            asdf_channel=40, sh_2d_degree=3, sh_3d_degree=6, hidden_dim=128, dtype=torch.float32, device=self.device, sample_direction_num=200, direction_upscale=4
+            asdf_channel=100, sh_2d_degree=3, sh_3d_degree=4, hidden_dim=256, dtype=torch.float32, device=self.device, sample_direction_num=400, direction_upscale=4
         ).to(self.device)
 
         self.train_dataset = PointsDataset(self.points_dataset_folder_path)
@@ -62,9 +63,17 @@ class ASDFAutoEncoderTrainer(object):
         self.optimizer = AdamW(self.model.parameters(),
                                lr=self.lr,
                                weight_decay=self.weight_decay)
+        '''
         def lr_lambda(e): return max(self.lr_decay **
                                      (e / self.decay_step), self.lowest_decay)(e / self.decay_step), self.lowest_decay)
         self.scheduler = LambdaLR(self.optimizer, lr_lambda)
+        '''
+        self.scheduler = optimization.get_polynomial_decay_schedule_with_warmup(
+            self.optimizer,
+            num_warmup_steps=int(len(self.train_dataloader) / self.accumulation_steps),
+            num_training_steps=int(10*len(self.train_dataloader) / self.accumulation_steps),
+            lr_end=1e-6,
+            power=3)
         self.logger = Logger()
         return
 
@@ -119,6 +128,9 @@ class ASDFAutoEncoderTrainer(object):
         renameFile(tmp_save_model_file_path, save_model_file_path)
         return True
 
+    def getLr(self) -> float:
+        return self.optimizer.state_dict()["param_groups"][0]["lr"]
+
     def trainStep(self, points):
         self.model.train()
 
@@ -142,7 +154,7 @@ class ASDFAutoEncoderTrainer(object):
         self.logger.addScalar("Train/loss", loss_item, self.step)
         self.logger.addScalar("Train/loss_fit", loss_fit_item, self.step)
         self.logger.addScalar("Train/loss_coverage",
-                              loss_coverage_item, self.step)tem, self.step)
+                              loss_coverage_item, self.step)
 
         if loss_item < self.loss_min:
             self.loss_min = loss_item
@@ -152,16 +164,17 @@ class ASDFAutoEncoderTrainer(object):
         loss = loss / self.accumulation_steps
         loss.backward()
         nn.utils.clip_grad_norm_(
-            self.model.parameters(), max_norm=1e5, norm_type=2)eters(), max_norm=1e5, norm_type=2)
-        for params in self.model.parameters():
-            params.grad[torch.isnan(params.grad)] = 0.0
+            self.model.parameters(), max_norm=1e2, norm_type=2)
 
         if self.step % self.accumulation_steps == 0:
+            for params in self.model.parameters():
+                params.grad[torch.isnan(params.grad)] = 0.0
+
             self.optimizer.step()
 
             self.model.zero_grad()
             self.optimizer.zero_grad()
-        return True
+        return loss_item
 
     def evalStep(self, data):
         self.model.eval()
@@ -198,23 +211,28 @@ class ASDFAutoEncoderTrainer(object):
 
         self.model.zero_grad()
         for epoch in range(total_epoch):
-            self.logger.addScalar(
-                "Lr/lr",
-                self.optimizer.state_dict()['param_groups'][0]['lr'],
-                self.step)
-
             print("[INFO][Trainer::train]")
             print("\t start training, epoch : " + str(epoch + 1) + "/" +
-                  str(total_epoch) + "...")            for_data = self.train_dataloader
+                  str(total_epoch) + "...")
             if print_progress:
-                for_data = tqdm(for_data)
-            for points in for_data:
+                pbar = tqdm(total=len(self.train_dataloader))
+            for points in self.train_dataloader:
                 self.step += 1
 
                 points = points.to(self.device, non_blocking=True)
-                self.trainStep(points)
+                loss = self.trainStep(points)
 
-            self.scheduler.step()
+
+                if print_progress:
+                    pbar.set_description(
+                        "LOSS %.6f LR %.4f" % (loss, self.getLr())
+                    )
+                    pbar.update(1)
+
+                self.logger.addScalar("Lr/lr", self.getLr(), self.step)
+
+                if self.step % self.accumulation_steps == 0:
+                    self.scheduler.step()
 
             '''
             print("[INFO][Trainer::train]")
@@ -230,7 +248,5 @@ class ASDFAutoEncoderTrainer(object):
             '''
 
             self.saveModel("./output/" + self.log_folder_name +
-                           "/model_last.pth")
-        return True
                            "/model_last.pth")
         return True

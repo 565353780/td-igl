@@ -85,19 +85,26 @@ class ASDFEncoder(nn.Module):
         )
 
         self.ln_xyz = nn.LayerNorm(hidden_dim)
-        self.xyz_head = Lin(hidden_dim, 3, bias=False)
+        self.xyz_head = Seq(Lin(hidden_dim, hidden_dim),
+                            ReLU(True),
+                            Lin(hidden_dim, 3))
 
         self.ln_txyz = nn.LayerNorm(hidden_dim)
-        self.txyz_head = Lin(hidden_dim, 3, bias=False)
+        self.txyz_head = Seq(Lin(hidden_dim, hidden_dim),
+                            ReLU(True),
+                            Lin(hidden_dim, 3))
 
         self.ln_sh2d = nn.LayerNorm(hidden_dim)
-        self.sh2d_head = Lin(hidden_dim, self.sh_2d_dim, bias=False)
+        self.sh2d_head = Seq(Lin(hidden_dim, hidden_dim),
+                            ReLU(True),
+                            Lin(hidden_dim, self.sh_2d_dim))
         self.sh2d_embed = Lin(self.sh_2d_dim, hidden_dim)
 
         self.ln_sh3d = nn.LayerNorm(hidden_dim)
-        self.sh3d_head = Lin(hidden_dim, self.sh_3d_dim, bias=False)
+        self.sh3d_head = Seq(Lin(hidden_dim, hidden_dim),
+                            ReLU(True),
+                            Lin(hidden_dim, self.sh_3d_dim))
 
-        self.k = 32
         return
 
     def forward(self, pc, idx: Union[np.ndarray, torch.Tensor, None] = None):
@@ -124,7 +131,6 @@ class ASDFEncoder(nn.Module):
         center = center.view(B, -1, 3)
 
         center_embeddings = embed(center, self.basis)
-
         center_embeddings = self.embed(torch.cat([center, center_embeddings], dim=2))
 
         x = self.transformer(x, center_embeddings)
