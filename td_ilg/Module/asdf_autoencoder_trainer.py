@@ -15,8 +15,9 @@ from td_ilg.Dataset.points import PointsDataset
 from td_ilg.Model.asdf_autoencoder import ASDFAutoEncoder
 from td_ilg.Method.time import getCurrentTime
 
-def worker_init_fn(worker_id):
-    np.random.seed(np.random.get_state()[1][0] + worker_id)
+
+def worker_init_fn(worker_id):    np.random.seed(
+    np.random.get_state()[1][0] + worker_id)
 
 
 class ASDFAutoEncoderTrainer(object):
@@ -61,8 +62,8 @@ class ASDFAutoEncoderTrainer(object):
         self.optimizer = AdamW(self.model.parameters(),
                                lr=self.lr,
                                weight_decay=self.weight_decay)
-        lr_lambda = lambda e: max(self.lr_decay**
-                                  (e / self.decay_step), self.lowest_decay)
+        def lr_lambda(e): return max(self.lr_decay **
+                                     (e / self.decay_step), self.lowest_decay)(e / self.decay_step), self.lowest_decay)
         self.scheduler = LambdaLR(self.optimizer, lr_lambda)
         self.logger = Logger()
         return
@@ -78,17 +79,17 @@ class ASDFAutoEncoderTrainer(object):
             print("\t model_file not exist! start training from step 0...")
             return True
 
-        model_dict = torch.load(model_file_path)
+        model_dict= torch.load(model_file_path)
 
         self.model.load_state_dict(model_dict['model'])
 
         if not resume_model_only:
             self.optimizer.load_state_dict(model_dict['optimizer'])
-            self.step = model_dict['step']
-            self.eval_step = model_dict['eval_step']
-            self.loss_min = model_dict['loss_min']
-            self.eval_loss_min = model_dict['eval_loss_min']
-            self.log_folder_name = model_dict['log_folder_name']
+            self.step= model_dict['step']
+            self.eval_step= model_dict['eval_step']
+            self.loss_min= model_dict['loss_min']
+            self.eval_loss_min= model_dict['eval_loss_min']
+            self.log_folder_name= model_dict['log_folder_name']
 
         self.loadSummaryWriter()
         print("[INFO][Trainer::loadModel]")
@@ -97,7 +98,7 @@ class ASDFAutoEncoderTrainer(object):
         return True
 
     def saveModel(self, save_model_file_path):
-        model_dict = {
+        model_dict= {
             'model': self.model.state_dict(),
             'optimizer': self.optimizer.state_dict(),
             'step': self.step,
@@ -140,7 +141,8 @@ class ASDFAutoEncoderTrainer(object):
 
         self.logger.addScalar("Train/loss", loss_item, self.step)
         self.logger.addScalar("Train/loss_fit", loss_fit_item, self.step)
-        self.logger.addScalar("Train/loss_coverage", loss_coverage_item, self.step)
+        self.logger.addScalar("Train/loss_coverage",
+                              loss_coverage_item, self.step)tem, self.step)
 
         if loss_item < self.loss_min:
             self.loss_min = loss_item
@@ -149,7 +151,8 @@ class ASDFAutoEncoderTrainer(object):
 
         loss = loss / self.accumulation_steps
         loss.backward()
-        nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=1e5, norm_type=2)
+        nn.utils.clip_grad_norm_(
+            self.model.parameters(), max_norm=1e5, norm_type=2)eters(), max_norm=1e5, norm_type=2)
         for params in self.model.parameters():
             params.grad[torch.isnan(params.grad)] = 0.0
 
@@ -202,8 +205,7 @@ class ASDFAutoEncoderTrainer(object):
 
             print("[INFO][Trainer::train]")
             print("\t start training, epoch : " + str(epoch + 1) + "/" +
-                str(total_epoch) + "...")
-            for_data = self.train_dataloader
+                  str(total_epoch) + "...")            for_data = self.train_dataloader
             if print_progress:
                 for_data = tqdm(for_data)
             for points in for_data:
@@ -228,5 +230,7 @@ class ASDFAutoEncoderTrainer(object):
             '''
 
             self.saveModel("./output/" + self.log_folder_name +
+                           "/model_last.pth")
+        return True
                            "/model_last.pth")
         return True
