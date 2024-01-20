@@ -22,7 +22,15 @@ def worker_init_fn(worker_id):    np.random.seed(
 
 class ASDFAutoEncoderTrainer(object):
     def __init__(self):
+        self.asdf_channel = 100
+        self.sh_2d_degree = 3
+        self.sh_3d_degree = 4
+        self.hidden_dim = 512
+        self.sample_direction_num = 400
+        self.direction_upscale = 4
+
         self.batch_size = 1
+        self.accumulation_steps = 64
         self.num_workers = 0
         self.lr = 1e-2
         self.weight_decay = 1e-10
@@ -30,13 +38,27 @@ class ASDFAutoEncoderTrainer(object):
         self.eval_step = 0
         self.loss_min = float('inf')
         self.eval_loss_min = float('inf')
-        self.log_folder_name = getCurrentTime()
-        self.device = 'cpu'
+        self.log_folder_name = getCurrentTime() + \
+            '_lr' + str(self.lr) + \
+            '_b' + str(self.batch_size * self.accumulation_steps) + \
+            '_asdf' + str(self.asdf_channel) + \
+            '_sh2d' + str(self.sh_2d_degree) + \
+            '_sh3d' + str(self.sh_3d_degree) + \
+            '_hidden' + str(self.hidden_dim) + \
+            '_dir' + str(self.sample_direction_num) + \
+            '_dirup' + str(self.direction_upscale)
+        self.device = 'cuda'
         self.points_dataset_folder_path = '/home/chli/chLi/Dataset/ShapeNet/points/10000/'
-        self.accumulation_steps = 64
 
         self.model = ASDFAutoEncoder(
-            asdf_channel=100, sh_2d_degree=3, sh_3d_degree=4, hidden_dim=256, dtype=torch.float32, device=self.device, sample_direction_num=400, direction_upscale=4
+            asdf_channel=self.asdf_channel,
+            sh_2d_degree=self.sh_2d_degree,
+            sh_3d_degree=self.sh_3d_degree,
+            hidden_dim=self.hidden_dim,
+            dtype=torch.float32,
+            device=self.device,
+            sample_direction_num=self.sample_direction_num,
+            direction_upscale=self.direction_upscale
         ).to(self.device)
 
         self.train_dataset = PointsDataset(self.points_dataset_folder_path)
