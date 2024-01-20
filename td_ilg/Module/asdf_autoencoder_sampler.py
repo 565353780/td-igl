@@ -18,17 +18,24 @@ class ASDFAutoEncoderSampler(object):
     def __init__(
         self, model_file_path: Union[str, None] = None, device: str = "cpu"
     ) -> None:
+        self.asdf_channel = 100
+        self.sh_2d_degree = 3
+        self.sh_3d_degree = 4
+        self.hidden_dim = 512
+        self.sample_direction_num = 400
+        self.direction_upscale = 4
+
         self.device = device
 
         self.model = ASDFAutoEncoder(
-            asdf_channel=40,
-            sh_2d_degree=3,
-            sh_3d_degree=6,
-            hidden_dim=128,
+            asdf_channel=self.asdf_channel,
+            sh_2d_degree=self.sh_2d_degree,
+            sh_3d_degree=self.sh_3d_degree,
+            hidden_dim=self.hidden_dim,
             dtype=torch.float32,
             device=self.device,
-            sample_direction_num=200,
-            direction_upscale=4,
+            sample_direction_num=self.sample_direction_num,
+            direction_upscale=self.direction_upscale,
         ).to(self.device)
 
         if model_file_path is not None:
@@ -37,13 +44,13 @@ class ASDFAutoEncoderSampler(object):
 
     def toInitialASDFModel(self) -> ASDFModel:
         asdf_model = ASDFModel(
-            max_sh_3d_degree=6,
-            max_sh_2d_degree=3,
+            max_sh_3d_degree=self.sh_3d_degree,
+            max_sh_2d_degree=self.sh_2d_degree,
             use_inv=False,
             dtype=torch.float32,
             device="cpu",
-            sample_direction_num=200,
-            direction_upscale=4,
+            sample_direction_num=self.sample_direction_num,
+            direction_upscale=self.direction_upscale,
         )
 
         return asdf_model
