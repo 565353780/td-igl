@@ -84,7 +84,7 @@ class ASDFAutoEncoderTrainer(object):
         self.scheduler = optimization.get_polynomial_decay_schedule_with_warmup(
             self.optimizer,
             num_warmup_steps=int(len(self.train_dataloader) / self.accumulation_steps),
-            num_training_steps=int(10*len(self.train_dataloader) / self.accumulation_steps),
+            num_training_steps=int(20*len(self.train_dataloader) / self.accumulation_steps),
             lr_end=1e-6,
             power=3)
         self.logger = Logger()
